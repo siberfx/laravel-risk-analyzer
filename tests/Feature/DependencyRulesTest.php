@@ -68,7 +68,8 @@ it('looks up composer and npm packages in OSV', function () {
         ->and($findings[0]->severity->value)->toBe('high')
         ->and($findings[0]->meta['fixed'])->toBe('1.7.4')
         ->and($findings[0]->file)->toBe('package-lock.json')
-        ->and($findings[1]->message)->toBe('guzzlehttp/psr7 2.4.1: Improper header name validation (GHSA-wxmh-65f7-jcvw)')
+        ->and($findings[0]->message)->toBe('axios 1.6.0: Server-Side Request Forgery in axios (GHSA-8hc4-vh64-cxmj)')
+        ->and($findings[1]->message)->toBe('guzzlehttp/psr7 2.4.1: Improper header name validation (GHSA-wxmh-65f7-jcvw / CVE-2023-29197)')
         ->and($findings[1]->meta['fixed'])->toBe('2.4.5')
         ->and($findings[1]->remediation)->toContain('https://github.com/advisories/GHSA-wxmh-65f7-jcvw');
 

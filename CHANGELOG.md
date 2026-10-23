@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## [2.0.0] - 2026-10-23
+
+### Changed
+- `vulnerable-dependency` findings now show the advisory's CVE ids next to its OSV id, e.g. `(GHSA-wxmh-65f7-jcvw / CVE-2023-29197)`, so CVEs are visible in console and Markdown output. Baseline fingerprints are unchanged.
+
 ## [1.0.0] - 2026-10-23
 
 ### Added

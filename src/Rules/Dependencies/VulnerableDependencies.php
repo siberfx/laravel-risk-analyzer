@@ -84,9 +84,11 @@ final class VulnerableDependencies extends AbstractProjectRule
 
                 $fix = $advisory['fixed'] !== null ? "Upgrade to {$advisory['fixed']} or later." : 'No fixed version is published yet; check the advisory for workarounds.';
                 $command = $package['ecosystem'] === 'npm' ? "npm install {$package['name']}@^{$advisory['fixed']}" : "composer update {$package['name']} --with-dependencies";
+                $cves = array_filter($advisory['aliases'], fn (string $alias) => str_starts_with($alias, 'CVE-') && $alias !== $advisory['id']);
+                $ids = implode(' / ', [$advisory['id'], ...$cves]);
 
                 yield $this->finding(
-                    "{$package['name']} {$package['version']}: {$advisory['summary']} ({$advisory['id']})",
+                    "{$package['name']} {$package['version']}: {$advisory['summary']} ({$ids})",
                     $advisory['severity'],
                     $fix.($advisory['fixed'] !== null ? " ({$command})" : '').' '.$advisory['url'],
                     $package['source'],
