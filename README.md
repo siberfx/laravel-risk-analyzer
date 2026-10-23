@@ -1,5 +1,12 @@
 # Risk Analyzer: security scanner for Laravel
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/siberfx/laravel-risk-analyzer.svg?style=flat-square)](https://packagist.org/packages/siberfx/laravel-risk-analyzer)
+[![Tests](https://img.shields.io/github/actions/workflow/status/siberfx/laravel-risk-analyzer/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/siberfx/laravel-risk-analyzer/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/siberfx/laravel-risk-analyzer.svg?style=flat-square)](https://packagist.org/packages/siberfx/laravel-risk-analyzer)
+[![PHP Version](https://img.shields.io/packagist/php-v/siberfx/laravel-risk-analyzer.svg?style=flat-square)](https://packagist.org/packages/siberfx/laravel-risk-analyzer)
+[![Laravel](https://img.shields.io/badge/Laravel-12.x%20%7C%2013.x-FF2D20?style=flat-square&logo=laravel&logoColor=white)](https://laravel.com)
+[![License](https://img.shields.io/github/license/siberfx/laravel-risk-analyzer.svg?style=flat-square)](LICENSE)
+
 Risk Analyzer finds security problems in a Laravel application: in its code, its running configuration and routes, its dependencies and its files.
 
 It does not grep source text. It **parses your PHP** and **follows request input through your code** (taint analysis), so it can tell these apart:
