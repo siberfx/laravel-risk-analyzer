@@ -27,7 +27,7 @@
     "require": {
         "php": "~8.4.0|~8.5.0",
         "composer/semver": "^3.4",
-        "guzzlehttp/guzzle": "^7.9",
+        "guzzlehttp/guzzle": "^7.9|^8.0",
         "illuminate/console": "^12.0|^13.0",
         "illuminate/contracts": "^12.0|^13.0",
         "illuminate/http": "^12.0|^13.0",

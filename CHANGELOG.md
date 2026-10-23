@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## [2.0.1] - 2026-10-25
+
+### Fixed
+- Allow `guzzlehttp/guzzle` ^8.0 alongside ^7.9, so the package installs in Laravel 13 apps that already lock Guzzle 8. HTTP calls go through Laravel's `Http` client, which supports both; the test suite passes on Guzzle 7.15 and 8.3.
+
 ## [2.0.0] - 2026-10-23
 
 ### Changed
