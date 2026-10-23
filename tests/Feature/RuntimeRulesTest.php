@@ -1,9 +1,18 @@
 <?php
 
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
 use Siberfx\RiskAnalyzer\Finding;
 use Siberfx\RiskAnalyzer\RiskAnalyzer;
+
+/**
+ * The CSRF middleware of the installed Laravel version (renamed in Laravel 13).
+ */
+function csrfMiddleware(): string
+{
+    return class_exists(PreventRequestForgery::class) ? PreventRequestForgery::class : VerifyCsrfToken::class;
+}
 
 function runtimeFindings(string $rule, bool $production = true): array
 {
@@ -13,8 +22,8 @@ function runtimeFindings(string $rule, bool $production = true): array
 }
 
 afterEach(function () {
-    if (class_exists(PreventRequestForgery::class)) {
-        PreventRequestForgery::flushState();
+    if (method_exists(csrfMiddleware(), 'flushState')) {
+        csrfMiddleware()::flushState();
     }
 });
 
@@ -73,13 +82,13 @@ it('flags cheap bcrypt settings', function () {
 });
 
 it('flags a catch-all CSRF exclusion', function () {
-    PreventRequestForgery::except(['*']);
+    csrfMiddleware()::except(['*']);
 
     expect(runtimeFindings('csrf-exclusions')[0][0])->toBe('critical');
 });
 
 it('matches CSRF exclusions against real routes', function () {
-    PreventRequestForgery::except(['webhooks/*', 'account/*']);
+    csrfMiddleware()::except(['webhooks/*', 'account/*']);
 
     Route::middleware('web')->group(function () {
         Route::post('webhooks/stripe', fn () => 'ok');
