@@ -219,7 +219,7 @@ For pull requests you can scan only the touched files: `php artisan risk-analyze
 ## Inside your test suite
 
 ```php
-use Siberfx\RiskAnalyzer\Facades\Risk Analyzer;
+use Siberfx\RiskAnalyzer\Facades\RiskAnalyzer;
 
 it('has no security findings', function () {
     RiskAnalyzer::scan(only: ['code', 'runtime'], offline: true)->assertClean('high');
