@@ -1,0 +1,79 @@
+{
+    "name": "siberfx/laravel-risk-analyzer",
+    "description": "Security scanner for Laravel 12 & 13: AST taint analysis of your code, checks of the booted app's config and routes, OSV dependency advisories, baselines and SARIF output.",
+    "keywords": [
+        "laravel",
+        "security",
+        "security-audit",
+        "static-analysis",
+        "sast",
+        "taint-analysis",
+        "sarif",
+        "osv",
+        "supply-chain-security",
+        "siberfx"
+    ],
+    "homepage": "https://github.com/siberfx/laravel-risk-analyzer",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Selim Görmüş",
+            "email": "info@siberfx.com",
+            "homepage": "https://siberfx.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "~8.4.0|~8.5.0",
+        "composer/semver": "^3.4",
+        "guzzlehttp/guzzle": "^7.9",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/contracts": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/routing": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0",
+        "nikic/php-parser": "^5.4",
+        "symfony/process": "^7.2|^8.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.20",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Siberfx\\RiskAnalyzer\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Siberfx\\RiskAnalyzer\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "format": "pint"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Siberfx\\RiskAnalyzer\\RiskAnalyzerServiceProvider"
+            ],
+            "aliases": {
+                "RiskAnalyzer": "Siberfx\\RiskAnalyzer\\Facades\\RiskAnalyzer"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
