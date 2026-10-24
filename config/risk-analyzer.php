@@ -172,6 +172,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | php.ini
+    |--------------------------------------------------------------------------
+    |
+    | php-configuration reads settings from php.ini files, because ini_get()
+    | shows the CLI's values. By default it uses the CLI's files, or the
+    | PHP-FPM ones next to them (Debian/Ubuntu). List the files PHP-FPM
+    | loads here when they live elsewhere (e.g. in a Docker image).
+    |
+    */
+
+    'php' => [
+        'ini_files' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Secrets
     |--------------------------------------------------------------------------
     |

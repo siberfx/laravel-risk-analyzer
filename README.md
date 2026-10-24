@@ -19,7 +19,7 @@ DB::select('select * from users where id = ?', [$id]); // bindings              
 
 Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
-- 33 rules across code, configuration and routes, dependencies and filesystem
+- 35 rules across code, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
 - Severity reflects reachability: user input reaching a sink ranks higher than a runtime value
 - Inline suppressions with reasons: `// risk-analyzer-ignore sql-injection -- table name comes from an enum`
@@ -94,7 +94,7 @@ php artisan risk-analyzer:config-sync                  # add new package options
 Sample output:
 
 ```
-  RISK ANALYZER  33 rules · production profile · 1.84s
+  RISK ANALYZER  35 rules · production profile · 1.84s
 
   CRITICAL sql-injection  app/Http/Controllers/ReportController.php:22
            Request input flows into raw SQL passed to DB::select().
@@ -150,6 +150,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `trusted-proxies` | `TrustProxies` trusting every proxy (`*`, `**`), which lets clients spoof their IP with `X-Forwarded-For` |
 | `insecure-app-url` | `APP_URL` on `http://` or `URL::forceScheme('http')` in production |
 | `database-tls` | In production: MySQL/MariaDB connections to public hosts without an SSL CA, PostgreSQL with `sslmode` disable/allow/prefer |
+| `php-configuration` | In production: `allow_url_include`, `display_errors`, `display_startup_errors` and `expose_php` on, `log_errors` off, `zend.assertions` 1, read from the php.ini files PHP-FPM uses (see below) |
 
 ### Dependencies
 
@@ -164,8 +165,9 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 | Rule | Looks for |
 | --- | --- |
-| `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/` |
+| `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/`, and PHP files, dumps, keys, logs and `.htaccess` in folders linked into it (`storage:link`) |
 | `secrets-in-git` | `.env`, OAuth keys, `auth.json`, private keys **committed to git** (asks `git ls-files`) |
+| `file-permissions` | `.env`, `auth.json` and the Passport key readable or writable by every user, `storage/` and `bootstrap/cache` set to 777 (not on Windows) |
 
 ## Runtime versions
 
@@ -194,6 +196,19 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 ```
 
 The in-app request runs that page's code like a browser visit would. If `/` needs a database or does more than render, point `probe_path` at a lighter page (`/up`) or set it to `false`. A page that fails is reported as info, not as missing headers.
+
+## php.ini
+
+`php-configuration` reads settings from the php.ini **files**, not with `ini_get()`: the CLI that runs the scan forces `display_errors` on and often loads a different php.ini than PHP-FPM. It uses, in order:
+
+1. the files in `risk-analyzer.php.ini_files` when set, otherwise the CLI's php.ini and `conf.d` files, or the PHP-FPM ones next to them on Debian/Ubuntu (`/etc/php/8.4/fpm/php.ini`, `conf.d`, `pool.d/*.conf`, including `php_admin_value[...]` overrides);
+2. `public/.user.ini` and `php_flag`/`php_value` lines in `public/.htaccess` on top (for settings a directory can change).
+
+Each finding names the file the value came from. When the scan runs where PHP-FPM is configured differently (a Docker image, a managed host), list its files:
+
+```php
+'php' => ['ini_files' => ['/usr/local/etc/php/php.ini', '/usr/local/etc/php-fpm.d/www.conf']],
+```
 
 ## Production profile
 

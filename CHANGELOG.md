@@ -2,6 +2,13 @@
 
 All notable changes to this package are documented here.
 
+## [2.4.0] - 2026-10-25
+
+### Added
+- `php-configuration` (production): `allow_url_include` on (high), `display_errors` on (medium), `display_startup_errors` and `expose_php` on, `log_errors` off and `zend.assertions` 1 (low). Values are read from the php.ini files rather than `ini_get()`, which shows the CLI's: the PHP-FPM php.ini, `conf.d` and pool overrides next to the CLI ones on Debian/Ubuntu, or the files in the new `php.ini_files` config, plus `public/.user.ini` and `php_flag`/`php_value` in `public/.htaccess`. Each finding names the file the value came from.
+- `file-permissions`: `.env`, `auth.json` and `storage/oauth-private.key` readable (medium) or writable (high) by every user on the machine, and `storage/` or `bootstrap/cache` writable by everyone (low). Skipped on Windows.
+- `public-exposure` checks folders linked into `public/` (`filesystems.links`, e.g. `php artisan storage:link`) for PHP files the web server may execute, environment files, database dumps, keys, credentials, logs and `.htaccess`. Archives and other uploads are not reported there.
+
 ## [2.3.0] - 2026-10-25
 
 ### Added

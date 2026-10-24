@@ -45,12 +45,14 @@ final class RiskAnalyzer
         Runtime\TrustedProxies::class,
         Runtime\InsecureAppUrl::class,
         Runtime\DatabaseTls::class,
+        Runtime\PhpConfiguration::class,
         Dependencies\VulnerableDependencies::class,
         Dependencies\AbandonedPackages::class,
         Dependencies\ComposerHardening::class,
         Dependencies\UnsupportedRuntime::class,
         Filesystem\PublicDirectoryExposure::class,
         Filesystem\SecretsInVersionControl::class,
+        Filesystem\FilePermissions::class,
     ];
 
     /** @var list<Rule|class-string<Rule>> */
