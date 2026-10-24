@@ -2,6 +2,18 @@
 
 All notable changes to this package are documented here.
 
+## [2.2.0] - 2026-10-25
+
+### Added
+- `unsupported-runtime` checks Node.js: versions pinned in `.nvmrc`, `.node-version`, `package.json` (`engines.node`, `volta.node`), Dockerfiles, compose files and GitHub Actions `node-version`, plus the installed `node`. Each finding names the file and line it came from.
+- `unsupported-runtime` checks the PHP patch level against php.net: high when a newer patch of the running branch fixed security issues, low when only bug-fix releases are newer.
+- `unsupported-runtime` flags a `composer.json` `require.php` or `config.platform.php` constraint whose lowest allowed version is unsupported (medium).
+- `vulnerable-dependency` reads `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` (v5 to v9) and the text `bun.lock`, next to `package-lock.json`. A binary `bun.lockb` is reported as info. Upgrade commands match the package manager.
+- `runtime` config section: endpoints, timeout, cache TTL, `node` and `node_binary`.
+
+### Changed
+- Support dates for PHP, Laravel and Node.js come from endoflife.date (cached for a day), with the built-in tables used offline or when it is unreachable. Existing PHP and Laravel findings keep their fingerprints.
+
 ## [2.1.0] - 2026-10-25
 
 ### Added

@@ -26,7 +26,7 @@ final class VulnerableDependencies extends AbstractProjectRule
 
     public function description(): string
     {
-        return 'Packages in composer.lock and package-lock.json with published advisories, looked up in the OSV.dev database (GitHub Security Advisories, FriendsOfPHP, npm). Severity comes from the advisory; the lowest fixing version is suggested.';
+        return 'Packages in composer.lock, package-lock.json, yarn.lock, pnpm-lock.yaml and bun.lock with published advisories, looked up in the OSV.dev database (GitHub Security Advisories, FriendsOfPHP, npm). Severity comes from the advisory; the lowest fixing version is suggested.';
     }
 
     public function category(): Category
@@ -46,10 +46,17 @@ final class VulnerableDependencies extends AbstractProjectRule
         }
 
         $includeDev = (bool) $context->config('dependencies.include_dev', true);
+        $javascript = (bool) $context->config('dependencies.npm', true);
         $packages = [
             ...Lockfiles::composer($context),
-            ...($context->config('dependencies.npm', true) ? Lockfiles::npm($context) : []),
+            ...($javascript ? Lockfiles::javascript($context) : []),
         ];
+
+        if ($javascript && $context->exists('bun.lockb') && ! $context->exists('bun.lock')) {
+            yield $this->finding('bun.lockb is a binary lockfile and cannot be checked for advisories.', Severity::Info,
+                'Switch to the text lockfile with `bun install --save-text-lockfile` (the default since Bun 1.2) and commit bun.lock.',
+                'bun.lockb', anchor: 'bun.lockb');
+        }
 
         $queries = [];
 
@@ -83,7 +90,13 @@ final class VulnerableDependencies extends AbstractProjectRule
                 }
 
                 $fix = $advisory['fixed'] !== null ? "Upgrade to {$advisory['fixed']} or later." : 'No fixed version is published yet; check the advisory for workarounds.';
-                $command = $package['ecosystem'] === 'npm' ? "npm install {$package['name']}@^{$advisory['fixed']}" : "composer update {$package['name']} --with-dependencies";
+                $command = match ($package['source']) {
+                    'composer.lock' => "composer update {$package['name']} --with-dependencies",
+                    'yarn.lock' => "yarn up {$package['name']}@^{$advisory['fixed']}, or yarn upgrade on Yarn 1",
+                    'pnpm-lock.yaml' => "pnpm update {$package['name']}@^{$advisory['fixed']}",
+                    'bun.lock' => "bun update {$package['name']}@^{$advisory['fixed']}",
+                    default => "npm install {$package['name']}@^{$advisory['fixed']}",
+                };
                 $cves = array_filter($advisory['aliases'], fn (string $alias) => str_starts_with($alias, 'CVE-') && $alias !== $advisory['id']);
                 $ids = implode(' / ', [$advisory['id'], ...$cves]);
 

@@ -90,9 +90,11 @@ return [
     | Dependency advisories
     |--------------------------------------------------------------------------
     |
-    | Lock files are checked against the OSV.dev database (GitHub Security
+    | Lock files (composer.lock, package-lock.json, yarn.lock, pnpm-lock.yaml,
+    | bun.lock) are checked against the OSV.dev database (GitHub Security
     | Advisories, FriendsOfPHP, npm...). Results are cached per package
-    | version. Use --offline to skip network lookups.
+    | version. Use --offline to skip network lookups. 'npm' covers every
+    | JavaScript lockfile.
     |
     */
 
@@ -105,6 +107,28 @@ return [
         'ignore' => [
             // 'GHSA-xxxx-xxxx-xxxx',
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Runtime support
+    |--------------------------------------------------------------------------
+    |
+    | unsupported-runtime takes support dates from endoflife.date and PHP
+    | security releases from php.net, cached for cache_ttl seconds. The
+    | built-in tables are used with --offline or when they are unreachable.
+    | 'node' checks Node versions pinned in the project; 'node_binary' is
+    | also asked for its version (false to skip).
+    |
+    */
+
+    'runtime' => [
+        'endpoint' => env('RISK_ANALYZER_EOL_ENDPOINT', 'https://endoflife.date'),
+        'php_endpoint' => env('RISK_ANALYZER_PHP_ENDPOINT', 'https://www.php.net'),
+        'timeout' => 10,
+        'cache_ttl' => 60 * 60 * 24,
+        'node' => true,
+        'node_binary' => 'node',
     ],
 
     /*

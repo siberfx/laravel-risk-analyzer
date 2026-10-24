@@ -17,7 +17,7 @@ DB::select("select * from {$this->table()}");          // runtime value, not inp
 DB::select('select * from users where id = ?', [$id]); // bindings                       → not reported
 ```
 
-Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files.
+Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
 - 29 rules across code, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
@@ -82,7 +82,7 @@ php artisan risk-analyzer:scan --fail-on=medium
 php artisan risk-analyzer:scan --only=code             # categories: code, runtime, dependencies, filesystem
 php artisan risk-analyzer:scan --only=sql-injection,ssrf --skip=xss-blade
 php artisan risk-analyzer:scan --changed=origin/main   # code rules only, on files changed since origin/main
-php artisan risk-analyzer:scan --offline               # no network: skips the OSV lookup
+php artisan risk-analyzer:scan --offline               # no network: skips the OSV lookup, built-in support dates
 php artisan risk-analyzer:scan --format=sarif --output=risk-analyzer.sarif
 php artisan risk-analyzer:scan --format=markdown >> "$GITHUB_STEP_SUMMARY"
 
@@ -151,10 +151,10 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 | Rule | Looks for |
 | --- | --- |
-| `vulnerable-dependency` | `composer.lock` and `package-lock.json` packages with OSV advisories, with the lowest fixing version |
+| `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version |
 | `abandoned-package` | Packages marked abandoned (from the lock file, offline) |
 | `composer-hardening` | `secure-http: false`, HTTP repositories, `allow-plugins: true`, unlisted plugins, missing lock |
-| `unsupported-runtime` | PHP and Laravel versions past (or within 90 days of) end of security support |
+| `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions |
 
 ### Filesystem
 
@@ -162,6 +162,21 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | --- | --- |
 | `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/` |
 | `secrets-in-git` | `.env`, OAuth keys, `auth.json`, private keys **committed to git** (asks `git ls-files`) |
+
+## Runtime versions
+
+`unsupported-runtime` takes end-of-support dates from [endoflife.date](https://endoflife.date) and PHP security releases from php.net, cached for a day. With `--offline`, or when those sites can't be reached, it uses the dates built into the package.
+
+- **PHP**: the running version, and its patch level. `8.4.3` is reported as high when a newer `8.4.x` release fixed security issues, and as low when only bug-fix releases are newer. Distribution packages (Debian, Ubuntu, RHEL) sometimes backport fixes without changing the version; check your vendor's advisories in that case.
+- **composer.json**: `require.php` and `config.platform.php` whose lowest allowed version is unsupported, e.g. `^8.1`.
+- **Node.js**: every pinned version is reported with where it came from, e.g. `Node 20 (Dockerfile:1) stopped receiving security fixes on 2026-04-30.` Aliases such as `lts/*` or `node:current` are skipped. If `node` is on the `PATH`, its version is checked too.
+
+```php
+'runtime' => [
+    'node' => true,            // check Node versions pinned in the project
+    'node_binary' => 'node',   // false to skip asking the installed node
+],
+```
 
 ## Production profile
 
