@@ -2,6 +2,15 @@
 
 All notable changes to this package are documented here.
 
+## [2.3.0] - 2026-10-25
+
+### Added
+- `security-headers` (production): checks one page for clickjacking protection (`X-Frame-Options` or CSP `frame-ancestors`), `Strict-Transport-Security` (missing, or `max-age` under six months), `X-Content-Type-Options: nosniff`, a `Content-Security-Policy` (missing, report-only, or allowing `'unsafe-inline'`/`'unsafe-eval'` scripts without nonces), `Referrer-Policy`, and version-revealing `X-Powered-By`/`Server` headers. The page is requested through the app's HTTP kernel (`http.probe_path`, default `/`) or from the live site (`http.probe_url`, which also sees web-server headers). A failing page is reported as info.
+- `trusted-proxies`: `TrustProxies` trusting every proxy (`trustProxies(at: '*')`, `$proxies = '*'` in an app middleware, or the old `trustedproxy.proxies` config), which lets any client spoof its IP with `X-Forwarded-For`.
+- `insecure-app-url` (production): `APP_URL` on `http://` (unless https is forced), or `URL::forceScheme('http')`.
+- `database-tls` (production): MySQL/MariaDB connections to public hosts without an SSL CA, and PostgreSQL connections with `sslmode` disable, allow or prefer (Laravel's default). Local, socket, private-range, single-label (Docker service) and `.internal`/`.local`/`.svc` hosts are skipped.
+- `http` config section: `probe_path`, `probe_url` (`RISK_ANALYZER_PROBE_URL`) and `timeout`.
+
 ## [2.2.1] - 2026-10-25
 
 ### Fixed

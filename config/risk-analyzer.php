@@ -154,6 +154,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Security headers
+    |--------------------------------------------------------------------------
+    |
+    | security-headers requests one page in production. By default it goes
+    | through the app's HTTP kernel (probe_path, false to skip), so headers
+    | your web server or CDN adds are not seen. Set probe_url to the live
+    | site (e.g. https://example.com) to check what browsers actually get.
+    |
+    */
+
+    'http' => [
+        'probe_path' => '/',
+        'probe_url' => env('RISK_ANALYZER_PROBE_URL'),
+        'timeout' => 10,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Secrets
     |--------------------------------------------------------------------------
     |

@@ -19,7 +19,7 @@ DB::select('select * from users where id = ?', [$id]); // bindings              
 
 Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
-- 29 rules across code, configuration and routes, dependencies and filesystem
+- 33 rules across code, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
 - Severity reflects reachability: user input reaching a sink ranks higher than a runtime value
 - Inline suppressions with reasons: `// risk-analyzer-ignore sql-injection -- table name comes from an enum`
@@ -94,7 +94,7 @@ php artisan risk-analyzer:config-sync                  # add new package options
 Sample output:
 
 ```
-  RISK ANALYZER  29 rules · production profile · 1.84s
+  RISK ANALYZER  33 rules · production profile · 1.84s
 
   CRITICAL sql-injection  app/Http/Controllers/ReportController.php:22
            Request input flows into raw SQL passed to DB::select().
@@ -146,6 +146,10 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `cors-policy` | Any origin with credentials, unescaped origin patterns |
 | `password-hashing` | bcrypt rounds < 10, Argon2 below OWASP minimums |
 | `dev-tools-exposed` | Debugbar/Clockwork/Ray in `require`, debug routes and Debugbar/Telescope enabled in production |
+| `security-headers` | In production: no clickjacking protection (`X-Frame-Options` / CSP `frame-ancestors`), no or short `Strict-Transport-Security`, no `X-Content-Type-Options`, no CSP or one allowing `'unsafe-inline'`/`'unsafe-eval'` scripts, no `Referrer-Policy`, version-revealing `X-Powered-By`/`Server` |
+| `trusted-proxies` | `TrustProxies` trusting every proxy (`*`, `**`), which lets clients spoof their IP with `X-Forwarded-For` |
+| `insecure-app-url` | `APP_URL` on `http://` or `URL::forceScheme('http')` in production |
+| `database-tls` | In production: MySQL/MariaDB connections to public hosts without an SSL CA, PostgreSQL with `sslmode` disable/allow/prefer |
 
 ### Dependencies
 
@@ -177,6 +181,19 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
     'node_binary' => 'node',   // false to skip asking the installed node
 ],
 ```
+
+## Security headers
+
+`security-headers` requests one page and checks its response headers. By default it sends `GET /` through your app's HTTP kernel, so nothing goes over the network, but headers added by nginx, Apache or a CDN are not visible. Findings then say "The app does not set..." To check what browsers actually receive, point it at the live site:
+
+```php
+'http' => [
+    'probe_path' => '/',                         // false to skip the in-app request
+    'probe_url' => env('RISK_ANALYZER_PROBE_URL'), // e.g. https://example.com (skipped with --offline)
+],
+```
+
+The in-app request runs that page's code like a browser visit would. If `/` needs a database or does more than render, point `probe_path` at a lighter page (`/up`) or set it to `false`. A page that fails is reported as info, not as missing headers.
 
 ## Production profile
 
