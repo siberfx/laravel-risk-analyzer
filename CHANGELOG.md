@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## [2.6.0] - 2026-10-25
+
+### Added
+- `--dev` for `risk-analyzer:scan` and `risk-analyzer:baseline`: forces the development profile even when `APP_ENV` is a production environment, so production-only checks (and their page requests and service connections) are skipped. The console header shows `development profile (--dev)`. Passing `--dev` with `--production` is an error.
+
 ## [2.5.0] - 2026-10-25
 
 ### Added

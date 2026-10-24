@@ -97,3 +97,23 @@ it('scans only files changed in git with --changed', function () {
 
     expect($rules)->toBe(['code-execution']);
 });
+
+it('forces the development profile with --dev, even when APP_ENV is production', function () {
+    $this->app['env'] = 'production';
+    config()->set('app.debug', true);
+
+    $this->artisan('risk-analyzer:scan', ['--only' => ['debug-mode']])
+        ->expectsOutputToContain('production profile')
+        ->assertFailed();
+
+    $this->artisan('risk-analyzer:scan', ['--only' => ['debug-mode'], '--dev' => true])
+        ->expectsOutputToContain('development profile (--dev)')
+        ->expectsOutputToContain('PASS')
+        ->assertSuccessful();
+});
+
+it('rejects --dev together with --production', function (string $command) {
+    $this->artisan($command, ['--dev' => true, '--production' => true])
+        ->expectsOutputToContain('Use either --dev or --production, not both.')
+        ->assertExitCode(2);
+})->with(['risk-analyzer:scan', 'risk-analyzer:baseline']);

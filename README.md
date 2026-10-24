@@ -78,6 +78,7 @@ If you run `config:cache`, run it again after syncing.
 ```bash
 php artisan risk-analyzer:scan                         # everything, fails on "high" and above
 php artisan risk-analyzer:scan --production            # apply production checks (debug mode, cookies, dev tools...)
+php artisan risk-analyzer:scan --dev                   # skip production-only checks, even when APP_ENV=production
 php artisan risk-analyzer:scan --fail-on=medium
 php artisan risk-analyzer:scan --only=code             # categories: code, runtime, dependencies, filesystem
 php artisan risk-analyzer:scan --only=sql-injection,ssrf --skip=xss-blade
@@ -216,6 +217,8 @@ Each finding names the file the value came from. When the scan runs where PHP-FP
 ## Production profile
 
 Some issues only matter in production (debug mode, insecure cookies, enabled dev tools). These rules use their full severity when the app runs in an environment listed in `risk-analyzer.production_environments`, or when you pass `--production`. Run the scan on the server, or in CI with the production config cached, to check the configuration that actually ships.
+
+`--dev` does the opposite: it forces the development profile even when `APP_ENV` is a production environment. Production-only checks (debug mode, cookies, headers, database TLS and versions, php.ini...) are skipped, so the scan makes no page requests or service connections; code, dependency, route and filesystem rules still run. `risk-analyzer:baseline` takes `--production` and `--dev` too, and passing both is an error.
 
 ## Suppressing findings
 

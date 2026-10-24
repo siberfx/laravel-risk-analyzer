@@ -26,6 +26,7 @@ final class ScanCommand extends Command
         {--only=* : Only run these rule ids or categories (code, runtime, dependencies, filesystem)}
         {--skip=* : Skip these rule ids or categories}
         {--production : Treat the current environment as production}
+        {--dev : Treat the current environment as development: skip production-only checks}
         {--offline : Skip network lookups (dependency advisories)}
         {--changed= : Only scan code changed against a git ref (empty for uncommitted changes)}
         {--baseline= : Baseline file to use instead of the configured one}
@@ -36,6 +37,12 @@ final class ScanCommand extends Command
 
     public function handle(RiskAnalyzer $riskAnalyzer): int
     {
+        if ($this->option('dev') && $this->option('production')) {
+            $this->components->error('Use either --dev or --production, not both.');
+
+            return self::INVALID;
+        }
+
         $format = strtolower($this->stringOption('format') ?? 'console');
         $reporter = $this->reporter($format);
 
@@ -53,7 +60,7 @@ final class ScanCommand extends Command
             $report = $riskAnalyzer->scan(
                 only: $this->listOption('only'),
                 skip: $this->listOption('skip'),
-                production: $this->option('production') ? true : null,
+                production: $this->profile(),
                 offline: (bool) $this->option('offline'),
                 files: $files,
                 baseline: $this->option('no-baseline') ? false : $this->stringOption('baseline'),
@@ -88,7 +95,11 @@ final class ScanCommand extends Command
         $this->line(sprintf(
             '  <fg=black;bg=cyan;options=bold> RISK ANALYZER </> <fg=gray>%d rules · %s · %.2fs</>',
             count($report->rules),
-            $report->production ? 'production profile' : 'non-production profile (use --production to apply production checks)',
+            match (true) {
+                $report->production => 'production profile',
+                (bool) $this->option('dev') => 'development profile (--dev)',
+                default => 'non-production profile (use --production to apply production checks)',
+            },
             $report->duration,
         ));
         $this->newLine();
@@ -146,6 +157,18 @@ final class ScanCommand extends Command
         }
 
         $this->newLine();
+    }
+
+    /**
+     * --production and --dev force the profile; otherwise APP_ENV decides.
+     */
+    private function profile(): ?bool
+    {
+        return match (true) {
+            (bool) $this->option('production') => true,
+            (bool) $this->option('dev') => false,
+            default => null,
+        };
     }
 
     private function reporter(string $format): ?Reporter

@@ -11,14 +11,25 @@ final class BaselineCommand extends Command
     protected $signature = 'risk-analyzer:baseline
         {--path= : Where to write the baseline (defaults to the configured path)}
         {--production : Treat the current environment as production}
+        {--dev : Treat the current environment as development: skip production-only checks}
         {--offline : Skip network lookups (dependency advisories)}';
 
     protected $description = 'Record the current findings as accepted, so only new ones fail future scans';
 
     public function handle(RiskAnalyzer $riskAnalyzer): int
     {
+        if ($this->option('dev') && $this->option('production')) {
+            $this->components->error('Use either --dev or --production, not both.');
+
+            return self::INVALID;
+        }
+
         $report = $riskAnalyzer->scan(
-            production: $this->option('production') ? true : null,
+            production: match (true) {
+                (bool) $this->option('production') => true,
+                (bool) $this->option('dev') => false,
+                default => null,
+            },
             offline: (bool) $this->option('offline'),
             baseline: false,
         );
