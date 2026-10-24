@@ -2,6 +2,26 @@
 
 All notable changes to this package are documented here.
 
+## [2.2.1] - 2026-10-25
+
+### Fixed
+- Skipping a single route no longer depends on the package being installed. The `->riskAnalyzerIgnore()` route macro added in 2.1.0 only exists while the package is loaded, so with the package installed as a dev dependency, `composer install --no-dev` made every route file that used it throw `BadMethodCallException`.
+
+### Removed
+- The `->riskAnalyzerIgnore()` route macro. Replace it with the `#[RiskAnalyzerIgnore]` attribute on the route's closure, controller method or controller class, or with the `routes.ignore` config:
+
+  ```php
+  // before
+  Route::get('admin/status', StatusController::class)->riskAnalyzerIgnore('unprotected-route', 'public status page');
+
+  // after
+  #[RiskAnalyzerIgnore('unprotected-route', reason: 'public status page')]
+  final class StatusController { /* ... */ }
+  ```
+
+### Added
+- `Siberfx\RiskAnalyzer\Attributes\RiskAnalyzerIgnore`. PHP only loads an attribute's class when it is instantiated, which only the scanner does, so routes using it keep working without the package.
+
 ## [2.2.0] - 2026-10-25
 
 ### Added

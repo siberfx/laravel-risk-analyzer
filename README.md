@@ -200,14 +200,23 @@ $token = md5(uniqid()); // risk-analyzer-ignore insecure-randomness -- cache-bus
 
 `risk-analyzer-ignore` with no rule id ignores every rule on that line. Put the reason after `--`.
 
-**Routes** have no source line to comment, so mark them on the route instead:
+**Routes** have no source line to comment, so put the `#[RiskAnalyzerIgnore]` attribute on the route's closure, controller method, or controller class (covers all its routes). With no rule ids it skips every route rule:
 
 ```php
-Route::get('admin/status', StatusController::class)
-    ->riskAnalyzerIgnore('unprotected-route', 'public status page');
+use Siberfx\RiskAnalyzer\Attributes\RiskAnalyzerIgnore;
+
+Route::get('admin/status', #[RiskAnalyzerIgnore('unprotected-route', reason: 'public status page')] fn () => view('status'));
+
+final class GoogleCallbackController
+{
+    #[RiskAnalyzerIgnore('unprotected-route', reason: 'OAuth callback')]
+    public function __invoke() { /* ... */ }
+}
 ```
 
-or list URI / route-name patterns in config, e.g. for routes a package registers:
+The attribute is safe in production even though the package is a dev dependency: PHP only loads an attribute's class when something asks for an instance of it, and only the scanner does. Your routes keep working after `composer install --no-dev`.
+
+Or list URI / route-name patterns in config, e.g. for routes a package registers. An unused config file is just as safe without the package:
 
 ```php
 'routes' => ['ignore' => ['admin/oauth/*' => 'SSO entry points', 'admin.preview']],

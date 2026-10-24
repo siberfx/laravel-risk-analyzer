@@ -3,8 +3,10 @@
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
+use Siberfx\RiskAnalyzer\Attributes\RiskAnalyzerIgnore;
 use Siberfx\RiskAnalyzer\Finding;
 use Siberfx\RiskAnalyzer\RiskAnalyzer;
+use Symfony\Component\Process\Process;
 
 /**
  * The CSRF middleware of the installed Laravel version (renamed in Laravel 13).
@@ -20,6 +22,31 @@ function runtimeFindings(string $rule, bool $production = true): array
         ->map(fn (Finding $finding) => [$finding->severity->value, $finding->message])
         ->all();
 }
+
+final class IgnoredMethodController
+{
+    #[RiskAnalyzerIgnore('unprotected-route', reason: 'OAuth callback')]
+    public function callback(): string
+    {
+        return 'ok';
+    }
+
+    public function other(): string
+    {
+        return 'ok';
+    }
+}
+
+abstract class BaseAdminController
+{
+    public function __invoke(): string
+    {
+        return 'ok';
+    }
+}
+
+#[RiskAnalyzerIgnore]
+final class IgnoredClassController extends BaseAdminController {}
 
 /**
  * unprotected-route findings without the trailing "(file:line)" of the route's handler.
@@ -176,17 +203,53 @@ it('flags SPA catch-alls whose API cannot be found, and only for wildcard parame
     ]);
 });
 
-it('skips routes ignored with the route macro or the routes.ignore config', function () {
-    Route::get('admin/public', fn () => 'ok')->riskAnalyzerIgnore('unprotected-route', 'status page');
-    Route::get('admin/everything', fn () => 'ok')->riskAnalyzerIgnore();
-    Route::get('admin/other-rule', fn () => 'ok')->riskAnalyzerIgnore('csrf-exclusions');
+it('skips routes whose handler has #[RiskAnalyzerIgnore], and routes in the routes.ignore config', function () {
+    Route::get('admin/public', #[RiskAnalyzerIgnore('unprotected-route', reason: 'status page')] fn () => 'ok');
+    Route::get('admin/everything', #[RiskAnalyzerIgnore] fn () => 'ok');
+    Route::get('admin/other-rule', #[RiskAnalyzerIgnore('csrf-exclusions')] fn () => 'ok');
+    Route::get('admin/callback-method', [IgnoredMethodController::class, 'callback']);
+    Route::get('admin/other-method', [IgnoredMethodController::class, 'other']);
+    Route::get('admin/whole-class', IgnoredClassController::class);
     Route::get('admin/sso/start', fn () => 'ok')->name('admin.sso.start');
     Route::get('admin/preview', fn () => 'ok');
     config()->set('risk-analyzer.routes.ignore', ['admin.sso.*' => 'SSO entry point', 'admin/preview']);
 
     expect(array_column(routeFindings(), 1))->toBe([
         'GET|HEAD admin/other-rule looks like an admin route but has no authentication middleware.',
+        'GET|HEAD admin/other-method looks like an admin route but has no authentication middleware.',
     ]);
+});
+
+it('keeps routes with #[RiskAnalyzerIgnore] working when the package is not installed', function () {
+    // A plain PHP process without Composer's autoloader stands in for composer install --no-dev.
+    $script = $this->project(['routes.php' => <<<'PHP'
+        <?php
+
+        use Siberfx\RiskAnalyzer\Attributes\RiskAnalyzerIgnore;
+
+        #[RiskAnalyzerIgnore('unprotected-route', reason: 'OAuth callback')]
+        final class CallbackController
+        {
+            #[RiskAnalyzerIgnore]
+            public function __invoke(): string
+            {
+                return 'controller';
+            }
+        }
+
+        $closure = #[RiskAnalyzerIgnore('unprotected-route')] fn () => 'closure';
+
+        // Laravel reads its own attributes (e.g. controller middleware) the same way.
+        $reflected = count((new ReflectionClass(CallbackController::class))->getAttributes(Illuminate\Routing\Attributes\Controllers\Middleware::class));
+
+        echo class_exists(RiskAnalyzerIgnore::class, false) ? 'loaded' : 'not loaded', ' ', (new CallbackController)(), ' ', $closure(), ' ', $reflected;
+        PHP]).'/routes.php';
+
+    $process = new Process([PHP_BINARY, '-n', $script]);
+    $process->run();
+
+    expect($process->getErrorOutput())->toBe('')
+        ->and($process->getOutput())->toBe('not loaded controller closure 0');
 });
 
 it('flags dev tools required for production and debug routes', function () {

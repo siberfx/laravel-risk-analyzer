@@ -140,7 +140,7 @@ return [
     |                       checked for rate limiting / signatures instead of auth.
     | 'ignore'              URI or route-name patterns skipped by unprotected-route,
     |                       optionally keyed with a reason: ['admin/oauth/*' => 'SSO'].
-    |                       Single routes can use ->riskAnalyzerIgnore() instead.
+    |                       Single routes can use the #[RiskAnalyzerIgnore] attribute.
     |
     */
 

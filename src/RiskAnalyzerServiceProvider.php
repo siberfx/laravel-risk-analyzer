@@ -3,14 +3,12 @@
 namespace Siberfx\RiskAnalyzer;
 
 use Illuminate\Contracts\Foundation\CachesConfiguration;
-use Illuminate\Routing\Route;
 use Illuminate\Support\ServiceProvider;
 use Siberfx\RiskAnalyzer\Console\BaselineCommand;
 use Siberfx\RiskAnalyzer\Console\ConfigSyncCommand;
 use Siberfx\RiskAnalyzer\Console\RulesCommand;
 use Siberfx\RiskAnalyzer\Console\ScanCommand;
 use Siberfx\RiskAnalyzer\Support\ConfigMerger;
-use Siberfx\RiskAnalyzer\Support\RouteInspector;
 
 final class RiskAnalyzerServiceProvider extends ServiceProvider
 {
@@ -27,14 +25,6 @@ final class RiskAnalyzerServiceProvider extends ServiceProvider
         }
 
         $this->app->singleton(RiskAnalyzer::class, fn ($app) => new RiskAnalyzer($app, (array) $app['config']->get('risk-analyzer', [])));
-
-        // Route::get(...)->riskAnalyzerIgnore('unprotected-route', 'OAuth callback'); no rule ids ignores every route rule.
-        Route::macro('riskAnalyzerIgnore', function (string|array $rules = [], ?string $reason = null) {
-            /** @var Route $this */
-            $this->action[RouteInspector::IGNORE_KEY] = ['rules' => array_values((array) $rules), 'reason' => $reason];
-
-            return $this;
-        });
     }
 
     public function boot(): void

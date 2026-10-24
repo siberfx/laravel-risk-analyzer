@@ -62,7 +62,7 @@ final class RouteProtection extends AbstractProjectRule
                     yield $this->spaShell($context, $route, $routes, $authMiddleware);
                 } else {
                     yield $this->finding("{$route['location']} looks like an admin route but has no authentication middleware.{$this->definedAt($context, $route)}", null,
-                        'Put the route in a group with the auth middleware (and an authorization check such as can:). If it is public on purpose, mark it with ->riskAnalyzerIgnore(\'unprotected-route\', \'reason\').',
+                        'Put the route in a group with the auth middleware (and an authorization check such as can:). If it is public on purpose, mark its closure or controller with #[RiskAnalyzerIgnore(\'unprotected-route\', reason: \'...\')].',
                         anchor: 'admin.'.$route['location'], meta: ['route' => $route['location']]);
                 }
             }

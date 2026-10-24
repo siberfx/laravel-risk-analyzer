@@ -6,8 +6,10 @@ use Closure;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Str;
+use ReflectionClass;
 use ReflectionFunction;
 use ReflectionMethod;
+use Siberfx\RiskAnalyzer\Attributes\RiskAnalyzerIgnore;
 use Throwable;
 
 /**
@@ -16,15 +18,10 @@ use Throwable;
  */
 final class RouteInspector
 {
-    /**
-     * Route action key written by the riskAnalyzerIgnore() route macro.
-     */
-    public const IGNORE_KEY = 'risk_analyzer_ignore';
-
     public function __construct(private readonly Router $router) {}
 
     /**
-     * Routes marked with ->riskAnalyzerIgnore() for $rule are left out.
+     * Routes whose handler carries #[RiskAnalyzerIgnore] for $rule are left out.
      *
      * @return iterable<array{route: Route, uri: string, name: ?string, methods: list<string>, middleware: list<string>, location: string}>
      */
@@ -46,17 +43,37 @@ final class RouteInspector
         }
     }
 
+    /**
+     * #[RiskAnalyzerIgnore] on the route closure, the controller method or the controller class.
+     */
     public static function ignores(Route $route, string $rule): bool
     {
-        $ignore = $route->getAction(self::IGNORE_KEY);
+        $handler = self::handler($route);
 
-        if (! is_array($ignore)) {
+        if ($handler === null) {
             return false;
         }
 
-        $rules = (array) ($ignore['rules'] ?? []);
+        $attributes = $handler->getAttributes(RiskAnalyzerIgnore::class);
 
-        return $rules === [] || in_array($rule, $rules, true);
+        // The route's controller class, not the method's declaring class: the method may be inherited.
+        if ($handler instanceof ReflectionMethod && class_exists($controller = Str::before((string) $route->getAction('uses'), '@'))) {
+            array_push($attributes, ...(new ReflectionClass($controller))->getAttributes(RiskAnalyzerIgnore::class));
+        }
+
+        foreach ($attributes as $attribute) {
+            try {
+                $rules = $attribute->newInstance()->rules;
+            } catch (Throwable) {
+                continue;
+            }
+
+            if ($rules === [] || in_array($rule, $rules, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -66,10 +83,18 @@ final class RouteInspector
      */
     public static function source(Route $route): ?array
     {
+        $handler = self::handler($route);
+        $file = $handler?->getFileName();
+
+        return is_string($file) ? [$file, (int) $handler->getStartLine()] : null;
+    }
+
+    private static function handler(Route $route): ReflectionFunction|ReflectionMethod|null
+    {
         try {
             $uses = $route->getAction('uses');
 
-            $reflection = match (true) {
+            return match (true) {
                 $uses instanceof Closure => new ReflectionFunction($uses),
                 is_string($uses) && str_contains($uses, '@') => new ReflectionMethod(...explode('@', $uses, 2)),
                 is_string($uses) && method_exists($uses, '__invoke') => new ReflectionMethod($uses, '__invoke'),
@@ -78,10 +103,6 @@ final class RouteInspector
         } catch (Throwable) {
             return null;
         }
-
-        $file = $reflection?->getFileName();
-
-        return is_string($file) ? [$file, (int) $reflection->getStartLine()] : null;
     }
 
     /**
