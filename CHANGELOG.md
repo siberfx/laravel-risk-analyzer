@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here.
 
+## [2.5.0] - 2026-10-25
+
+### Added
+- `unsupported-runtime` checks, in production, the version of the default database server (MySQL, MariaDB, PostgreSQL) and of the Redis or Valkey server used by the cache, session or queue against endoflife.date (built-in dates offline): high past end of support, low within 90 days. MariaDB is recognised behind the `mysql` driver. Each check uses its own connection with a 5 second timeout, only reads the version, and skips servers it cannot reach.
+- `runtime.services` config (default `true`) to turn the server checks off.
+
 ## [2.4.0] - 2026-10-25
 
 ### Added

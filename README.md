@@ -159,7 +159,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version |
 | `abandoned-package` | Packages marked abandoned (from the lock file, offline) |
 | `composer-hardening` | `secure-http: false`, HTTP repositories, `allow-plugins: true`, unlisted plugins, missing lock |
-| `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions |
+| `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions; in production, the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses |
 
 ### Filesystem
 
@@ -177,10 +177,13 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 - **composer.json**: `require.php` and `config.platform.php` whose lowest allowed version is unsupported, e.g. `^8.1`.
 - **Node.js**: every pinned version is reported with where it came from, e.g. `Node 20 (Dockerfile:1) stopped receiving security fixes on 2026-04-30.` Aliases such as `lts/*` or `node:current` are skipped. If `node` is on the `PATH`, its version is checked too.
 
+- **Database and Redis servers** (production only): the default database connection (MySQL, MariaDB or PostgreSQL) and, when the cache, session or queue uses Redis, that Redis or Valkey server are asked for their version, e.g. `MySQL 8.0 (connection 'mysql', 8.0.39) stopped receiving security fixes on 2026-04-30.` Each check opens its own connection with a 5 second timeout and only reads the version; a server that cannot be reached is skipped.
+
 ```php
 'runtime' => [
     'node' => true,            // check Node versions pinned in the project
     'node_binary' => 'node',   // false to skip asking the installed node
+    'services' => true,        // false to skip asking the database and Redis servers
 ],
 ```
 

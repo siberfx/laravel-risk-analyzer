@@ -2,6 +2,7 @@
 
 namespace Siberfx\RiskAnalyzer\Rules\Dependencies;
 
+use Closure;
 use Composer\Semver\VersionParser;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Http\Client\Factory as Http;
@@ -13,6 +14,7 @@ use Siberfx\RiskAnalyzer\ScanContext;
 use Siberfx\RiskAnalyzer\Severity;
 use Siberfx\RiskAnalyzer\Support\EndOfLifeClient;
 use Siberfx\RiskAnalyzer\Support\NodeVersions;
+use Siberfx\RiskAnalyzer\Support\ServiceVersions;
 use Throwable;
 
 final class UnsupportedRuntime extends AbstractProjectRule
@@ -33,7 +35,24 @@ final class UnsupportedRuntime extends AbstractProjectRule
         '25' => '2026-06-01', '26' => '2029-04-30',
     ];
 
+    /** Database and cache servers, keyed by endoflife.date product. */
+    public const array SERVICES = [
+        'mysql' => ['5.7' => '2023-10-31', '8.0' => '2026-04-30', '8.4' => '2032-04-30', '9.7' => '2034-04-30'],
+        'mariadb' => [
+            '10.4' => '2024-06-18', '10.5' => '2025-06-24', '10.6' => '2026-07-06', '10.11' => '2028-02-16',
+            '11.4' => '2029-05-29', '11.8' => '2028-06-04', '12.3' => '2029-06-12',
+        ],
+        'postgresql' => ['12' => '2024-11-21', '13' => '2025-11-13', '14' => '2026-11-12', '15' => '2027-11-11', '16' => '2028-11-09', '17' => '2029-11-08', '18' => '2030-11-14'],
+        'redis' => ['6.0' => '2022-05-31', '6.2' => '2027-04-01', '7.0' => '2024-07-29', '7.2' => '2029-12-01', '7.4' => '2029-12-01', '8.0' => '2026-12-01', '8.2' => '2030-09-01'],
+        'valkey' => ['7.2' => '2029-04-16', '8.0' => '2027-09-15', '8.1' => '2030-03-31', '9.0' => '2028-10-21', '9.1' => '2031-05-19'],
+    ];
+
     private ?EndOfLifeClient $client = null;
+
+    /**
+     * @param  (Closure(ScanContext): list<array{product: string, label: string, version: string, source: string}>)|null  $services  detects database/Redis versions; ServiceVersions::detect() by default
+     */
+    public function __construct(private readonly ?Closure $services = null) {}
 
     public function id(): string
     {
@@ -42,12 +61,12 @@ final class UnsupportedRuntime extends AbstractProjectRule
 
     public function title(): string
     {
-        return 'Unsupported PHP, Laravel or Node.js';
+        return 'Unsupported PHP, Laravel, Node.js or services';
     }
 
     public function description(): string
     {
-        return 'PHP, Laravel and Node.js versions past their security-support date (or within 90 days of it): the running PHP and its patch level, the composer.json PHP constraint, and Node versions pinned in .nvmrc, package.json, Dockerfiles, compose files and GitHub Actions. Dates come from endoflife.date and php.net (cached), with built-in tables offline.';
+        return 'PHP, Laravel and Node.js versions past their security-support date (or within 90 days of it): the running PHP and its patch level, the composer.json PHP constraint, and Node versions pinned in .nvmrc, package.json, Dockerfiles, compose files and GitHub Actions, and in production the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses. Dates come from endoflife.date and php.net (cached), with built-in tables offline.';
     }
 
     public function category(): Category
@@ -88,6 +107,16 @@ final class UnsupportedRuntime extends AbstractProjectRule
                     yield from $this->check("Node {$node['major']} ({$node['source']})", $nodeDates[(string) $node['major']] ?? null,
                         $anchor, $node['file'], $node['line']);
                 }
+            }
+        }
+
+        if ($context->production && $context->config('runtime.services', true)) {
+            foreach ($this->services !== null ? ($this->services)($context) : ServiceVersions::detect($context) as $service) {
+                $cycle = ServiceVersions::cycle($service['product'], $service['version']);
+                $end = $cycle === null ? null : ($this->dates($service['product'], self::SERVICES[$service['product']] ?? [])[$cycle] ?? null);
+
+                yield from $this->check("{$service['label']} {$cycle} ({$service['source']}, {$service['version']})", $end,
+                    'service.'.$service['product'].'.'.$service['source']);
             }
         }
     }

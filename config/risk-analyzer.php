@@ -118,7 +118,9 @@ return [
     | security releases from php.net, cached for cache_ttl seconds. The
     | built-in tables are used with --offline or when they are unreachable.
     | 'node' checks Node versions pinned in the project; 'node_binary' is
-    | also asked for its version (false to skip).
+    | also asked for its version (false to skip). 'services' asks the
+    | database and Redis servers the app uses for their versions in
+    | production (a separate connection with a 5 second timeout).
     |
     */
 
@@ -129,6 +131,7 @@ return [
         'cache_ttl' => 60 * 60 * 24,
         'node' => true,
         'node_binary' => 'node',
+        'services' => true,
     ],
 
     /*

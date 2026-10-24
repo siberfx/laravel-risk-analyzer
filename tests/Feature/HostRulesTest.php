@@ -62,7 +62,7 @@ it('flags secrets and writable folders other users can reach', function () {
     $modes = ['.env' => 0o644, 'auth.json' => 0o666, 'storage/oauth-private.key' => 0o600, 'storage' => 0o777, 'bootstrap/cache' => 0o775];
     $rule = new FilePermissions(fn (string $path) => $modes[substr(str_replace('\\', '/', $path), strlen($root) + 1)] ?? false);
 
-    $findings = collect($rule->run(new ScanContext(app(), $root, (array) config('risk-analyzer'))))
+    $findings = collect(iterator_to_array($rule->run(new ScanContext(app(), $root, (array) config('risk-analyzer'))), false))
         ->map(fn (Finding $finding) => [$finding->severity->value, $finding->message])->all();
 
     expect($findings)->toBe([
