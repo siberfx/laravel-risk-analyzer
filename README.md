@@ -117,7 +117,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `encryption-key` | Missing/invalid `APP_KEY`, weak cipher, production key equal to `.env.example` |
 | `session-cookies` | `http_only` off, `secure` off in production, `SameSite=None` without `Secure`, very long lifetimes |
 | `csrf-exclusions` | Catch-all exclusions, and **which real POST/PUT/DELETE web routes** each exclusion unprotects |
-| `unprotected-route` | Admin-looking routes without auth, login/password/OTP routes without `throttle` |
+| `unprotected-route` | Admin-looking routes without auth, login/password/OTP routes without `throttle`. OAuth/SSO callbacks and webhooks are checked for throttling/signatures instead, and SPA catch-alls (`admin/{any?}`) by whether the API they call is protected |
 | `cors-policy` | Any origin with credentials, unescaped origin patterns |
 | `password-hashing` | bcrypt rounds < 10, Argon2 below OWASP minimums |
 | `dev-tools-exposed` | Debugbar/Clockwork/Ray in `require`, debug routes and Debugbar/Telescope enabled in production |
@@ -159,6 +159,19 @@ $token = md5(uniqid()); // risk-analyzer-ignore insecure-randomness -- cache-bus
 ```
 
 `risk-analyzer-ignore` with no rule id ignores every rule on that line. Put the reason after `--`.
+
+**Routes** have no source line to comment, so mark them on the route instead:
+
+```php
+Route::get('admin/status', StatusController::class)
+    ->riskAnalyzerIgnore('unprotected-route', 'public status page');
+```
+
+or list URI / route-name patterns in config, e.g. for routes a package registers:
+
+```php
+'routes' => ['ignore' => ['admin/oauth/*' => 'SSO entry points', 'admin.preview']],
+```
 
 **Baseline**: record the findings you accept and only fail on new ones:
 

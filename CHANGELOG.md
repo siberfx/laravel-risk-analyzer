@@ -7,6 +7,17 @@ All notable changes to this package are documented here.
 ### Fixed
 - Allow `guzzlehttp/guzzle` ^8.0 alongside ^7.9, so the package installs in Laravel 13 apps that already lock Guzzle 8. HTTP calls go through Laravel's `Http` client, which supports both; the test suite passes on Guzzle 7.15 and 8.3.
 
+## [2.1.0] - 2026-10-24
+
+### Added
+- `unprotected-route` recognises OAuth/SSO callbacks and webhooks (`routes.auth_flow_patterns`: callback, oauth, sso, saml, webhook). They are no longer reported as unauthenticated admin routes; callbacks without `throttle` and state-changing webhooks without signature-verification middleware are reported as low instead.
+- `unprotected-route` recognises SPA catch-all routes (`admin/{any?}`, or a parameter constrained to `.*`) and judges them by the API routes under `api/{prefix}` or `{prefix}/api`: info when those all require auth, low when none can be found, high (listing them) when some are unprotected.
+- `->riskAnalyzerIgnore($rules, $reason)` route macro to skip a route in `unprotected-route`, `csrf-exclusions` and `dev-tools-exposed`; with no rule ids it skips all of them.
+- `routes.ignore` config: URI or route-name patterns skipped by `unprotected-route`, optionally keyed with a reason.
+
+### Changed
+- Unprotected admin route findings end with the file and line of the closure or controller method that handles the route. Baseline fingerprints are unchanged.
+
 ## [2.0.0] - 2026-10-23
 
 ### Changed

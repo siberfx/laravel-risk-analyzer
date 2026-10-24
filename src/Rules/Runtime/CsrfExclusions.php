@@ -60,7 +60,7 @@ final class CsrfExclusions extends AbstractProjectRule
         if ($patterns !== []) {
             $inspector = new RouteInspector($context->router());
 
-            foreach ($inspector->routes() as $route) {
+            foreach ($inspector->routes($this->id()) as $route) {
                 if (! RouteInspector::changesState($route['methods']) || ! RouteInspector::has($route['middleware'], ['web'])) {
                     continue;
                 }

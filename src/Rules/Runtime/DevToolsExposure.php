@@ -75,7 +75,7 @@ final class DevToolsExposure extends AbstractProjectRule
         $inspector = new RouteInspector($context->router());
         $reported = [];
 
-        foreach ($inspector->routes() as $route) {
+        foreach ($inspector->routes($this->id()) as $route) {
             $prefix = explode('/', $route['uri'])[0];
 
             if (in_array($prefix, self::DEBUG_ROUTES, true) && ! isset($reported[$prefix])) {

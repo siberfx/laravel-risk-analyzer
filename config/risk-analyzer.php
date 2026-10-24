@@ -111,12 +111,21 @@ return [
     |--------------------------------------------------------------------------
     | Route rules
     |--------------------------------------------------------------------------
+    |
+    | 'auth_flow_patterns'  OAuth/SSO callbacks and webhooks: public by design,
+    |                       checked for rate limiting / signatures instead of auth.
+    | 'ignore'              URI or route-name patterns skipped by unprotected-route,
+    |                       optionally keyed with a reason: ['admin/oauth/*' => 'SSO'].
+    |                       Single routes can use ->riskAnalyzerIgnore() instead.
+    |
     */
 
     'routes' => [
         'auth_middleware' => ['auth', 'auth.basic', 'can', 'signed', 'password.confirm', 'verified'],
         'admin_patterns' => ['admin', 'dashboard', 'backoffice', 'panel', 'manage'],
         'sensitive_patterns' => ['login', 'register', 'password', 'otp', 'two-factor', '2fa', 'verify'],
+        'auth_flow_patterns' => ['callback', 'oauth', 'sso', 'saml', 'webhook', 'webhooks'],
+        'ignore' => [],
     ],
 
     /*

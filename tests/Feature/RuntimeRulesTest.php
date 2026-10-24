@@ -21,6 +21,14 @@ function runtimeFindings(string $rule, bool $production = true): array
         ->all();
 }
 
+/**
+ * unprotected-route findings without the trailing "(file:line)" of the route's handler.
+ */
+function routeFindings(): array
+{
+    return array_map(fn (array $finding) => [$finding[0], preg_replace('/ \([^()]+:\d+\)$/', '', $finding[1])], runtimeFindings('unprotected-route'));
+}
+
 afterEach(function () {
     if (method_exists(csrfMiddleware(), 'flushState')) {
         csrfMiddleware()::flushState();
@@ -115,11 +123,69 @@ it('flags admin routes without authentication and auth routes without throttling
     Route::middlewareGroup('secure', ['auth']);
     Route::middleware('secure')->get('panel/reports', fn () => 'ok');
 
-    $messages = array_column(runtimeFindings('unprotected-route'), 1);
+    $messages = array_column(routeFindings(), 1);
 
     expect($messages)->toBe([
         'GET|HEAD admin/users looks like an admin route but has no authentication middleware.',
         'POST login accepts credentials or codes without rate limiting.',
+    ]);
+});
+
+it('points admin route findings at the closure or controller that handles them', function () {
+    $line = __LINE__ + 1;
+    Route::get('admin/users', fn () => 'list');
+
+    expect(runtimeFindings('unprotected-route')[0][1])->toEndWith("RuntimeRulesTest.php:{$line})");
+});
+
+it('checks OAuth callbacks and webhooks for rate limiting and signatures instead of auth', function () {
+    Route::get('admin/auth/google/callback', fn () => 'ok');
+    Route::middleware('throttle:10,1')->get('admin/auth/github/callback', fn () => 'ok');
+    Route::post('admin/webhooks/stripe', fn () => 'ok');
+    Route::middleware('signed')->post('admin/webhooks/mollie', fn () => 'ok');
+
+    expect(routeFindings())->toBe([
+        ['low', 'GET|HEAD admin/auth/google/callback is an OAuth/SSO callback; public by design, but it has no rate limiting.'],
+        ['low', 'POST admin/webhooks/stripe is a public webhook with no signature-verification middleware.'],
+    ]);
+});
+
+it('judges SPA catch-all routes by the API routes they call', function () {
+    Route::get('admin/{any?}', fn () => view('welcome'));
+    Route::middleware('auth:sanctum')->get('api/admin/users', fn () => []);
+
+    expect(routeFindings())->toBe([
+        ['info', 'GET|HEAD admin/{any?} serves a single-page app shell publicly; its 1 API routes require authentication.'],
+    ]);
+
+    Route::get('api/admin/stats', fn () => []);
+
+    expect(routeFindings())->toBe([
+        ['high', 'GET|HEAD admin/{any?} serves a single-page app whose API routes have no authentication: GET|HEAD api/admin/stats.'],
+        ['high', 'GET|HEAD api/admin/stats looks like an admin route but has no authentication middleware.'],
+    ]);
+});
+
+it('flags SPA catch-alls whose API cannot be found, and only for wildcard parameters', function () {
+    Route::get('dashboard/{path}', fn () => 'spa')->where('path', '.*');
+    Route::get('admin/users/{user}', fn () => 'user');
+
+    expect(routeFindings())->toBe([
+        ['high', 'GET|HEAD admin/users/{user} looks like an admin route but has no authentication middleware.'],
+        ['low', 'GET|HEAD dashboard/{path} serves a single-page app shell without authentication, and API routes under api/dashboard or dashboard/api could not be found to check.'],
+    ]);
+});
+
+it('skips routes ignored with the route macro or the routes.ignore config', function () {
+    Route::get('admin/public', fn () => 'ok')->riskAnalyzerIgnore('unprotected-route', 'status page');
+    Route::get('admin/everything', fn () => 'ok')->riskAnalyzerIgnore();
+    Route::get('admin/other-rule', fn () => 'ok')->riskAnalyzerIgnore('csrf-exclusions');
+    Route::get('admin/sso/start', fn () => 'ok')->name('admin.sso.start');
+    Route::get('admin/preview', fn () => 'ok');
+    config()->set('risk-analyzer.routes.ignore', ['admin.sso.*' => 'SSO entry point', 'admin/preview']);
+
+    expect(array_column(routeFindings(), 1))->toBe([
+        'GET|HEAD admin/other-rule looks like an admin route but has no authentication middleware.',
     ]);
 });
 
