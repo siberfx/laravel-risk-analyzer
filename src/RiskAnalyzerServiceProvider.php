@@ -2,18 +2,29 @@
 
 namespace Siberfx\RiskAnalyzer;
 
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Routing\Route;
 use Illuminate\Support\ServiceProvider;
 use Siberfx\RiskAnalyzer\Console\BaselineCommand;
+use Siberfx\RiskAnalyzer\Console\ConfigSyncCommand;
 use Siberfx\RiskAnalyzer\Console\RulesCommand;
 use Siberfx\RiskAnalyzer\Console\ScanCommand;
+use Siberfx\RiskAnalyzer\Support\ConfigMerger;
 use Siberfx\RiskAnalyzer\Support\RouteInspector;
 
 final class RiskAnalyzerServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/risk-analyzer.php', 'risk-analyzer');
+        // Recursive, so options added to nested sections reach apps that published an older config.
+        if (! ($this->app instanceof CachesConfiguration && $this->app->configurationIsCached())) {
+            $config = $this->app->make('config');
+
+            $config->set('risk-analyzer', ConfigMerger::merge(
+                require __DIR__.'/../config/risk-analyzer.php',
+                (array) $config->get('risk-analyzer', []),
+            ));
+        }
 
         $this->app->singleton(RiskAnalyzer::class, fn ($app) => new RiskAnalyzer($app, (array) $app['config']->get('risk-analyzer', [])));
 
@@ -39,6 +50,7 @@ final class RiskAnalyzerServiceProvider extends ServiceProvider
         $this->commands([
             ScanCommand::class,
             BaselineCommand::class,
+            ConfigSyncCommand::class,
             RulesCommand::class,
         ]);
     }

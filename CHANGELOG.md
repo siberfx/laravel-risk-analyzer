@@ -14,8 +14,10 @@ All notable changes to this package are documented here.
 - `unprotected-route` recognises SPA catch-all routes (`admin/{any?}`, or a parameter constrained to `.*`) and judges them by the API routes under `api/{prefix}` or `{prefix}/api`: info when those all require auth, low when none can be found, high (listing them) when some are unprotected.
 - `->riskAnalyzerIgnore($rules, $reason)` route macro to skip a route in `unprotected-route`, `csrf-exclusions` and `dev-tools-exposed`; with no rule ids it skips all of them.
 - `routes.ignore` config: URI or route-name patterns skipped by `unprotected-route`, optionally keyed with a reason.
+- `risk-analyzer:config-sync` adds options introduced by package updates to a published `config/risk-analyzer.php`, keeping your values, comments, `env()` calls and formatting. `--dry-run` lists them, `--check` fails when any are missing. Can be run from `post-update-cmd`.
 
 ### Changed
+- The package config is merged recursively, so options added to nested sections (such as `routes.auth_flow_patterns`) take effect for apps that published an older config. Lists set in the published config still replace the defaults as a whole.
 - Unprotected admin route findings end with the file and line of the closure or controller method that handles the route. Baseline fingerprints are unchanged.
 
 ## [2.0.0] - 2026-10-23

@@ -49,6 +49,30 @@ Publish the config if you want to change paths, thresholds or rules:
 php artisan vendor:publish --tag=risk-analyzer-config
 ```
 
+### Keeping a published config up to date
+
+New options added by a package update work even if your published config is older: the package defaults fill any key you don't set, also inside nested sections such as `routes`. Lists you set (`paths`, `admin_patterns`...) are used as they are, never merged with the defaults.
+
+To also write the new options into your `config/risk-analyzer.php`, so you can see and change them:
+
+```bash
+php artisan risk-analyzer:config-sync            # add missing options to config/risk-analyzer.php
+php artisan risk-analyzer:config-sync --dry-run  # only list them
+php artisan risk-analyzer:config-sync --check    # list them and exit 1 if any are missing (CI)
+```
+
+It only adds keys, copied with their comments from the package config. Your values, comments, `env()` calls and formatting are left untouched, and nothing is removed. To run it on every update, add it to your app's `composer.json`:
+
+```json
+"scripts": {
+    "post-update-cmd": [
+        "@php artisan risk-analyzer:config-sync"
+    ]
+}
+```
+
+If you run `config:cache`, run it again after syncing.
+
 ## Usage
 
 ```bash
@@ -64,6 +88,7 @@ php artisan risk-analyzer:scan --format=markdown >> "$GITHUB_STEP_SUMMARY"
 
 php artisan risk-analyzer:rules --details              # what every rule looks for
 php artisan risk-analyzer:baseline                     # accept the current findings
+php artisan risk-analyzer:config-sync                  # add new package options to your published config
 ```
 
 Sample output:
