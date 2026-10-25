@@ -7,7 +7,7 @@
 [![Laravel](https://img.shields.io/badge/Laravel-12.x%20%7C%2013.x-FF2D20?style=flat-square&logo=laravel&logoColor=white)](https://laravel.com)
 [![License](https://img.shields.io/github/license/siberfx/laravel-risk-analyzer.svg?style=flat-square)](LICENSE)
 
-Risk Analyzer finds security problems in a Laravel application: in its code (PHP, Blade, and React, Vue and Angular frontends), its running configuration and routes, its dependencies and its files.
+Risk Analyzer finds security problems in a Laravel application: in its code (PHP, Blade, and React, Vue and Angular frontends), its Dockerfiles, compose files, scripts and CI workflows, its running configuration and routes, its dependencies and its files.
 
 It does not grep source text. It **parses your PHP** and **follows request input through your code** (taint analysis), so it can tell these apart:
 
@@ -19,13 +19,14 @@ DB::select('select * from users where id = ?', [$id]); // bindings              
 
 Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
-- 42 rules across code, frontend code, configuration and routes, dependencies and filesystem
+- 46 rules across code, frontend code, Docker/CI/scripts, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
 - Severity reflects reachability: user input reaching a sink ranks higher than a runtime value
 - Inline suppressions with reasons: `// risk-analyzer-ignore sql-injection -- table name comes from an enum`
 - Baselines to adopt it on an existing project and only gate **new** findings
 - `--changed` to scan only the files a branch touches
 - Frontend checks for React, Vue and Angular in `resources/js`, or a separate SPA folder with `--frontend=client`
+- Dockerfile, Docker Compose, shell script, Makefile and GitHub Actions checks
 - Console, JSON, **SARIF** (GitHub code scanning) and Markdown (PR comments / job summaries) output
 - A `Report::assertClean()` helper to run the scan inside your own test suite
 - Custom rules: an AST rule takes about 15 lines
@@ -81,9 +82,9 @@ php artisan risk-analyzer:scan                         # everything, fails on "h
 php artisan risk-analyzer:scan --production            # apply production checks (debug mode, cookies, dev tools...)
 php artisan risk-analyzer:scan --dev                   # skip production-only checks, even when APP_ENV=production
 php artisan risk-analyzer:scan --fail-on=medium
-php artisan risk-analyzer:scan --only=code             # categories: code, frontend, runtime, dependencies, filesystem
+php artisan risk-analyzer:scan --only=code             # categories: code, frontend, infrastructure, runtime, dependencies, filesystem
 php artisan risk-analyzer:scan --only=sql-injection,ssrf --skip=xss-blade
-php artisan risk-analyzer:scan --changed=origin/main   # code and frontend rules only, on files changed since origin/main
+php artisan risk-analyzer:scan --changed=origin/main   # code, frontend and infrastructure rules, on files changed since origin/main
 php artisan risk-analyzer:scan --frontend=client       # frontend code in client/ instead of resources/js (repeatable)
 php artisan risk-analyzer:scan --offline               # no network: skips the OSV lookup, built-in support dates
 php artisan risk-analyzer:scan --format=sarif --output=risk-analyzer.sarif
@@ -97,7 +98,7 @@ php artisan risk-analyzer:config-sync                  # add new package options
 Sample output:
 
 ```
-  RISK ANALYZER  42 rules · production profile · 1.84s
+  RISK ANALYZER  46 rules · production profile · 1.84s
 
   CRITICAL sql-injection  app/Http/Controllers/ReportController.php:22
            Request input flows into raw SQL passed to DB::select().
@@ -149,6 +150,15 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `frontend-token-storage` | Auth tokens (low) and passwords or secrets (medium) in `localStorage`/`sessionStorage` |
 | `frontend-debug` | `debugger` statements, `console.log`/`debug`/`trace` calls (one finding per file) |
 
+### Docker, CI & scripts
+
+| Rule | Looks for |
+| --- | --- |
+| `dockerfile-hardening` | Secrets in `ENV` (high) or build `ARG`s (medium), `COPY .` without a `.dockerignore` that keeps `.env` out, `ADD https://…` without `--checksum`, untagged or `:latest` base images, a final stage running as root, and the shell checks below on `RUN` lines |
+| `compose-hardening` | `privileged: true` and a mounted Docker socket (high), `network_mode: host`, `cap_add: SYS_ADMIN`/`ALL`, unconfined seccomp/AppArmor, literal secrets in `environment:`, `MYSQL_ALLOW_EMPTY_PASSWORD`, database/cache/search ports published on every interface (medium in `*.prod.yml`, low otherwise) |
+| `shell-script-risks` | In `.sh`/`.bash`/`.zsh`, Makefiles and `Envoy.blade.php`: committed tokens and secrets, `mysql -p<password>`, credentials in URLs, `curl … \| sh`, `chmod 777`, TLS checks turned off (`curl -k`, `--no-check-certificate`, `sslVerify false`), `eval "$VAR"`, `rm -rf "$DIR/"` without `${DIR:?}` |
+| `ci-workflow-risks` | GitHub Actions: issue/PR titles, bodies, branch names or commit messages expanded inside `run:` or `github-script` (script injection, high), `pull_request_target` workflows that check out the PR's code (high), `permissions: write-all`, third-party actions not pinned to a commit SHA (low, one finding per workflow), and the shell checks on `run:` steps |
+
 ### Configuration & routes (booted application)
 
 | Rule | Looks for |
@@ -174,7 +184,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version. Lockfiles inside frontend folders (a separate SPA) are checked too |
 | `abandoned-package` | Packages marked abandoned (from the lock file, offline) |
 | `composer-hardening` | `secure-http: false`, HTTP repositories, `allow-plugins: true`, unlisted plugins, missing lock |
-| `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions; in production, the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses |
+| `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions; in production, the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses; PHP base images (`php:8.1-fpm`, `serversideup/php:8.2-…`) in Dockerfiles and compose files |
 
 ### Filesystem
 
@@ -199,6 +209,23 @@ php artisan risk-analyzer:scan --only=frontend --frontend=../storefront
 When such a folder has its own `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` or `bun.lock`, `vulnerable-dependency` checks it as well. `--skip=frontend` turns the frontend rules off.
 
 The frontend rules match patterns; they don't run a JavaScript parser. Input is recognised when it is visible in the expression (`location.search`, `URLSearchParams`, `useParams()`, `useSearchParams()`, `$route.query`, `route.snapshot`, `event.data`...) or in a variable the same file assigns from it (`const params = new URLSearchParams(location.search)`). Values that reach a sink in other ways are reported as medium, to review. Inline suppressions work in JS (`// risk-analyzer-ignore xss-frontend -- sanitised on the server`) and in templates (`<!-- risk-analyzer-ignore xss-frontend -->`).
+
+## Docker, CI & scripts
+
+The infrastructure rules search `infrastructure.paths` (default: the project root) for Dockerfiles (`Dockerfile`, `Dockerfile.*`, `*.Dockerfile`, `Containerfile`), compose files (`docker-compose*.yml`, `compose*.yaml`), shell scripts (`.sh`, `.bash`, `.zsh`), Makefiles (`Makefile`, `*.mk`), `Envoy.blade.php` and `.github/workflows/*.yml`. `vendor`, `node_modules`, `storage`, `public`, `.git` and worktree folders are skipped. Add a folder outside the project, such as a checkout of your deploy repository, to the list:
+
+```php
+'infrastructure' => [
+    'paths' => ['.', '/srv/deploy-scripts'],
+],
+```
+
+Like the frontend rules they match patterns, and comments are ignored. Suppress a line with a `#` comment on it or the line above:
+
+```dockerfile
+# risk-analyzer-ignore dockerfile-hardening -- internal mirror with a private CA
+RUN curl -k https://mirror.internal/tool.tar.gz | tar xz
+```
 
 ## Runtime versions
 
@@ -397,7 +424,7 @@ RiskAnalyzer::extend(NoRawHtmlMail::class);
 
 ## Limits
 
-Risk Analyzer is a static scanner with intra-procedural taint tracking. It follows input within a function, not across method calls or class properties. The frontend rules match patterns in JavaScript, TypeScript and templates rather than parsing them. So treat a clean scan as "no known patterns found", not as proof of safety. It complements code review, dependency updates and a web application firewall; it doesn't replace them.
+Risk Analyzer is a static scanner with intra-procedural taint tracking. It follows input within a function, not across method calls or class properties. The frontend and infrastructure rules match patterns in JavaScript, TypeScript, templates, Dockerfiles, YAML and shell rather than parsing them. So treat a clean scan as "no known patterns found", not as proof of safety. It complements code review, dependency updates and a web application firewall; it doesn't replace them.
 
 ## Testing
 

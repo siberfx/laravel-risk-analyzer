@@ -72,6 +72,36 @@ return [
             'tests',
             '__tests__',
             'e2e',
+            '.worktrees',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Infrastructure files
+    |--------------------------------------------------------------------------
+    |
+    | Folders searched for Dockerfiles, compose files, shell scripts,
+    | Makefiles, Envoy files and .github/workflows. "." is the project root;
+    | add folders outside it (e.g. a separate deploy repository checkout).
+    |
+    */
+
+    'infrastructure' => [
+        'paths' => ['.'],
+        'exclude' => [
+            'vendor',
+            'node_modules',
+            'storage',
+            'bootstrap/cache',
+            'public',
+            '.git',
+            '.worktrees',
+            '.claude',
+            '.idea',
+            '.vscode',
+            'dist',
+            'build',
         ],
     ],
 

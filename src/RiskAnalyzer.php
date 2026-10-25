@@ -12,6 +12,7 @@ use Siberfx\RiskAnalyzer\Rules\Code;
 use Siberfx\RiskAnalyzer\Rules\Dependencies;
 use Siberfx\RiskAnalyzer\Rules\Filesystem;
 use Siberfx\RiskAnalyzer\Rules\Frontend;
+use Siberfx\RiskAnalyzer\Rules\Infrastructure;
 use Siberfx\RiskAnalyzer\Rules\Runtime;
 use Throwable;
 
@@ -41,6 +42,10 @@ final class RiskAnalyzer
         Frontend\FrontendPostMessage::class,
         Frontend\FrontendTokenStorage::class,
         Frontend\FrontendDebug::class,
+        Infrastructure\DockerfileHardening::class,
+        Infrastructure\ComposeHardening::class,
+        Infrastructure\ShellScriptRisks::class,
+        Infrastructure\CiWorkflowRisks::class,
         Runtime\DebugMode::class,
         Runtime\EncryptionKey::class,
         Runtime\SessionCookies::class,
@@ -154,7 +159,7 @@ final class RiskAnalyzer
             }
 
             // File-scoped scans (--changed) only make sense for code rules.
-            if ($files !== null && ! in_array($rule->category(), [Category::Code, Category::Frontend], true)) {
+            if ($files !== null && ! in_array($rule->category(), [Category::Code, Category::Frontend, Category::Infrastructure], true)) {
                 continue;
             }
 

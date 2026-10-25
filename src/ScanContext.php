@@ -6,8 +6,10 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
+use RecursiveCallbackFilterIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use Siberfx\RiskAnalyzer\Infrastructure\InfrastructureFile;
 use SplFileInfo;
 
 /**
@@ -16,6 +18,9 @@ use SplFileInfo;
 final class ScanContext
 {
     private readonly string $basePath;
+
+    /** @var list<string>|null */
+    private ?array $infrastructureFiles = null;
 
     /**
      * @param  array<string, mixed>  $config  the "risk-analyzer" config
@@ -130,14 +135,36 @@ final class ScanContext
      */
     public function frontendRoots(): array
     {
-        $roots = $this->frontendPaths ?? (array) $this->config('frontend.paths', []);
+        return $this->roots($this->frontendPaths ?? (array) $this->config('frontend.paths', []));
+    }
 
+    /**
+     * Dockerfiles, compose files, shell scripts, Makefiles, Envoy files and
+     * GitHub Actions workflows under infrastructure.paths, as relative paths.
+     *
+     * @return list<string>
+     */
+    public function infrastructureFiles(): array
+    {
+        return $this->infrastructureFiles ??= iterator_to_array($this->walk(
+            $this->roots((array) $this->config('infrastructure.paths', ['.'])),
+            (array) $this->config('infrastructure.exclude', []),
+            fn (string $relative) => InfrastructureFile::kind($relative) !== null,
+        ), false);
+    }
+
+    /**
+     * @param  array<mixed>  $paths
+     * @return list<string>
+     */
+    private function roots(array $paths): array
+    {
         return array_values(array_unique(array_map(function ($path) {
             $path = str_replace('\\', '/', (string) $path);
 
             // "." and "./client" are relative to the project root.
             return self::isAbsolute($path) ? rtrim($path, '/') : trim((string) preg_replace('#^\.(/|$)#', '', $path), '/');
-        }, $roots)));
+        }, $paths)));
     }
 
     /**
@@ -176,17 +203,21 @@ final class ScanContext
                 continue;
             }
 
-            $iterator = new RecursiveIteratorIterator(
+            // Exclusions apply inside the root, so an absolute root is not excluded by its own path.
+            $excluded = fn (string $path) => $this->isExcluded($this->relative($path), $exclude)
+                || $this->isExcluded(substr(str_replace('\\', '/', $path), strlen($directory) + 1), $exclude);
+
+            // Excluded folders (vendor, node_modules...) are not entered at all.
+            $iterator = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
                 new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
-            );
+                fn (SplFileInfo $file, string $path, RecursiveDirectoryIterator $iterator) => ! $iterator->hasChildren() || ! $excluded($file->getPathname().'/-'),
+            ));
 
             /** @var SplFileInfo $file */
             foreach ($iterator as $file) {
                 $relative = $this->relative($file->getPathname());
-                // Exclusions apply inside the root, so an absolute root is not excluded by its own path.
-                $inner = substr(str_replace('\\', '/', $file->getPathname()), strlen($directory) + 1);
 
-                if (isset($seen[$relative]) || ! $accept($relative) || $this->isExcluded($relative, $exclude) || $this->isExcluded($inner, $exclude)) {
+                if (isset($seen[$relative]) || ! $accept($relative) || $excluded($file->getPathname())) {
                     continue;
                 }
 

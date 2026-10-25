@@ -9,6 +9,7 @@ use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Support\Carbon;
 use Siberfx\RiskAnalyzer\Category;
 use Siberfx\RiskAnalyzer\Finding;
+use Siberfx\RiskAnalyzer\Infrastructure\InfrastructureFile;
 use Siberfx\RiskAnalyzer\Rules\AbstractProjectRule;
 use Siberfx\RiskAnalyzer\ScanContext;
 use Siberfx\RiskAnalyzer\Severity;
@@ -66,7 +67,7 @@ final class UnsupportedRuntime extends AbstractProjectRule
 
     public function description(): string
     {
-        return 'PHP, Laravel and Node.js versions past their security-support date (or within 90 days of it): the running PHP and its patch level, the composer.json PHP constraint, and Node versions pinned in .nvmrc, package.json, Dockerfiles, compose files and GitHub Actions, and in production the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses. Dates come from endoflife.date and php.net (cached), with built-in tables offline.';
+        return 'PHP, Laravel and Node.js versions past their security-support date (or within 90 days of it): the running PHP and its patch level, the composer.json PHP constraint, PHP base images in Dockerfiles and compose files, and Node versions pinned in .nvmrc, package.json, Dockerfiles, compose files and GitHub Actions, and in production the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses. Dates come from endoflife.date and php.net (cached), with built-in tables offline.';
     }
 
     public function category(): Category
@@ -91,6 +92,10 @@ final class UnsupportedRuntime extends AbstractProjectRule
         yield from $this->check("Laravel {$laravel}", $this->dates('laravel', self::LARAVEL)[$laravel] ?? null, 'laravel');
         yield from $this->patchLevel($php, $phpDates[$php] ?? null);
         yield from $this->composerConstraint($context, $phpDates);
+
+        foreach ($this->phpImages($context) as [$branch, $file, $line]) {
+            yield from $this->check("PHP {$branch} (base image)", $phpDates[$branch] ?? null, "php-image.{$file}.{$branch}", $file, $line);
+        }
 
         if ($context->config('runtime.node', true)) {
             $nodeDates = $this->dates('nodejs', self::NODE);
@@ -198,6 +203,32 @@ final class UnsupportedRuntime extends AbstractProjectRule
                 'Raise the lower bound to a supported PHP version so the app cannot be installed on an unsupported one.',
                 'composer.json', anchor: 'composer.'.$key, meta: ['constraint' => $constraint, 'branch' => $branch]);
         }
+    }
+
+    /**
+     * PHP branches of base images in Dockerfiles and compose files:
+     * php:8.1-fpm, serversideup/php:8.2-fpm-nginx, bitnami/php-fpm:8.1...
+     *
+     * @return list<array{string, string, int}> branch, file, line
+     */
+    private function phpImages(ScanContext $context): array
+    {
+        $images = [];
+
+        foreach ($context->infrastructureFiles() as $file) {
+            if (! in_array(InfrastructureFile::kind($file), [InfrastructureFile::DOCKERFILE, InfrastructureFile::COMPOSE], true)) {
+                continue;
+            }
+
+            $contents = (string) $context->read($file);
+            preg_match_all('/^\s*(?:FROM\s+(?:--\S+\s+)*|-?\s*image:\s*["\']?)(?:[\w.\-]+(?::\d+)?\/)*php(?:-fpm|-zts|-cli)?:(\d+\.\d+)/im', $contents, $matches, PREG_OFFSET_CAPTURE);
+
+            foreach ($matches[1] as [$branch, $offset]) {
+                $images[$file.$branch] ??= [$branch, $file, substr_count($contents, "\n", 0, $offset) + 1];
+            }
+        }
+
+        return array_values($images);
     }
 
     /**
