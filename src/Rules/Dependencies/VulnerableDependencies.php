@@ -47,14 +47,23 @@ final class VulnerableDependencies extends AbstractProjectRule
 
         $includeDev = (bool) $context->config('dependencies.include_dev', true);
         $javascript = (bool) $context->config('dependencies.npm', true);
+        $folders = $javascript ? $this->frontendFolders($context) : [];
+        // A --frontend scan only checks the JavaScript lockfiles of the frontend
+        // folders; the root one counts when a folder inside the project (resources/js) has none of its own.
+        $frontendOnly = $context->isScoped();
+        $root = ! $frontendOnly || array_any($context->frontendRoots(), function (string $path) use ($context, $folders) {
+            $folder = $context->relative($context->basePath($path));
+
+            return $path === '' || (! ScanContext::isAbsolute($folder) && ! in_array($folder, $folders, true) && is_dir($context->basePath($folder)));
+        });
         $packages = [
-            ...Lockfiles::composer($context),
-            ...($javascript ? Lockfiles::javascript($context) : []),
+            ...($frontendOnly ? [] : Lockfiles::composer($context)),
+            ...($javascript && $root ? Lockfiles::javascript($context) : []),
         ];
 
         $queries = [];
 
-        foreach ($javascript ? ['', ...$this->frontendFolders($context)] : [''] as $folder) {
+        foreach ([...($root ? [''] : []), ...$folders] as $folder) {
             $scope = $folder === '' ? $context : new ScanContext($context->app, $context->basePath($folder), $context->config, $context->production, $context->offline);
             $prefix = $folder === '' ? '' : $folder.'/';
 

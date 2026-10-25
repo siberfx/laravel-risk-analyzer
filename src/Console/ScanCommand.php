@@ -5,6 +5,7 @@ namespace Siberfx\RiskAnalyzer\Console;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 use RuntimeException;
+use Siberfx\RiskAnalyzer\Console\Concerns\ScopeOptions;
 use Siberfx\RiskAnalyzer\Finding;
 use Siberfx\RiskAnalyzer\Report;
 use Siberfx\RiskAnalyzer\Reporters\JsonReporter;
@@ -19,6 +20,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 final class ScanCommand extends Command
 {
+    use ScopeOptions;
+
     protected $signature = 'risk-analyzer:scan
         {--format=console : console, json, sarif or markdown}
         {--output= : Write the report to this file (the console summary is still printed)}
@@ -28,7 +31,8 @@ final class ScanCommand extends Command
         {--production : Treat the current environment as production}
         {--dev : Treat the current environment as development: skip production-only checks}
         {--offline : Skip network lookups (dependency advisories)}
-        {--frontend=* : Frontend folders to scan instead of frontend.paths (e.g. a separate SPA)}
+        {--frontend=* : Only frontend checks (React, Vue, Angular) and their npm advisories; optionally the folders to scan instead of frontend.paths}
+        {--infrastructure=* : Only Docker, compose, script and CI checks; optionally the folders to search instead of infrastructure.paths}
         {--changed= : Only scan code changed against a git ref (empty for uncommitted changes)}
         {--baseline= : Baseline file to use instead of the configured one}
         {--no-baseline : Ignore the baseline}
@@ -55,8 +59,8 @@ final class ScanCommand extends Command
 
         try {
             $threshold = Severity::fromLoose($this->stringOption('fail-on') ?? (string) config('risk-analyzer.fail_on', 'high'));
-            $changed = $this->option('changed');
-            $files = $changed !== null ? ChangedFiles::since(base_path(), is_string($changed) ? $changed : null) : null;
+            // --changed alone (empty) means uncommitted changes, like no ref.
+            $files = $this->option('changed') !== null ? ChangedFiles::since(base_path(), $this->stringOption('changed')) : null;
 
             $report = $riskAnalyzer->scan(
                 only: $this->listOption('only'),
@@ -65,7 +69,8 @@ final class ScanCommand extends Command
                 offline: (bool) $this->option('offline'),
                 files: $files,
                 baseline: $this->option('no-baseline') ? false : $this->stringOption('baseline'),
-                frontend: $this->pathsOption('frontend'),
+                frontend: $this->scopeOption('frontend'),
+                infrastructure: $this->scopeOption('infrastructure'),
             );
         } catch (InvalidArgumentException|RuntimeException $exception) {
             $this->components->error($exception->getMessage());
@@ -105,8 +110,10 @@ final class ScanCommand extends Command
             $report->duration,
         ));
 
-        if ($report->frontend !== []) {
-            $this->line('  <fg=gray>frontend: '.OutputFormatter::escape(implode(', ', $report->frontend)).'</>');
+        foreach (['frontend' => $report->frontend, 'infrastructure' => $report->infrastructure] as $label => $folders) {
+            if ($folders !== []) {
+                $this->line("  <fg=gray>{$label}: ".OutputFormatter::escape(implode(', ', $folders)).'</>');
+            }
         }
 
         $this->newLine();
@@ -193,26 +200,6 @@ final class ScanCommand extends Command
         $value = $this->option($name);
 
         return is_string($value) && $value !== '' ? $value : null;
-    }
-
-    /**
-     * Folder list option, case kept; null when not given.
-     *
-     * @return list<string>|null
-     */
-    private function pathsOption(string $name): ?array
-    {
-        $paths = [];
-
-        foreach ((array) $this->option($name) as $value) {
-            foreach (explode(',', (string) $value) as $item) {
-                if (trim($item) !== '') {
-                    $paths[] = trim($item);
-                }
-            }
-        }
-
-        return $paths === [] ? null : $paths;
     }
 
     /**

@@ -5,16 +5,20 @@ namespace Siberfx\RiskAnalyzer\Console;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 use Siberfx\RiskAnalyzer\Baseline;
+use Siberfx\RiskAnalyzer\Console\Concerns\ScopeOptions;
 use Siberfx\RiskAnalyzer\RiskAnalyzer;
 
 final class BaselineCommand extends Command
 {
+    use ScopeOptions;
+
     protected $signature = 'risk-analyzer:baseline
         {--path= : Where to write the baseline (defaults to the configured path)}
         {--production : Treat the current environment as production}
         {--dev : Treat the current environment as development: skip production-only checks}
         {--offline : Skip network lookups (dependency advisories)}
-        {--frontend=* : Frontend folders to scan instead of frontend.paths (e.g. a separate SPA)}';
+        {--frontend=* : Only frontend checks (React, Vue, Angular) and their npm advisories; optionally the folders to scan instead of frontend.paths}
+        {--infrastructure=* : Only Docker, compose, script and CI checks; optionally the folders to search instead of infrastructure.paths}';
 
     protected $description = 'Record the current findings as accepted, so only new ones fail future scans';
 
@@ -26,8 +30,6 @@ final class BaselineCommand extends Command
             return self::INVALID;
         }
 
-        $frontend = array_values(array_filter(array_map('trim', explode(',', implode(',', (array) $this->option('frontend'))))));
-
         try {
             $report = $riskAnalyzer->scan(
                 production: match (true) {
@@ -37,7 +39,8 @@ final class BaselineCommand extends Command
                 },
                 offline: (bool) $this->option('offline'),
                 baseline: false,
-                frontend: $frontend === [] ? null : $frontend,
+                frontend: $this->scopeOption('frontend'),
+                infrastructure: $this->scopeOption('infrastructure'),
             );
         } catch (InvalidArgumentException $exception) {
             $this->components->error($exception->getMessage());

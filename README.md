@@ -26,6 +26,7 @@ Runtime rules check the **booted application** instead of reading `.env` files. 
 - Baselines to adopt it on an existing project and only gate **new** findings
 - `--changed` to scan only the files a branch touches
 - Frontend checks for React, Vue and Angular in `resources/js`, or a separate SPA folder with `--frontend=client`
+- `--frontend` and `--infrastructure` to scan only the frontend, or only Docker/CI/scripts
 - Dockerfile, Docker Compose, shell script, Makefile and GitHub Actions checks
 - Console, JSON, **SARIF** (GitHub code scanning) and Markdown (PR comments / job summaries) output
 - A `Report::assertClean()` helper to run the scan inside your own test suite
@@ -85,7 +86,9 @@ php artisan risk-analyzer:scan --fail-on=medium
 php artisan risk-analyzer:scan --only=code             # categories: code, frontend, infrastructure, runtime, dependencies, filesystem
 php artisan risk-analyzer:scan --only=sql-injection,ssrf --skip=xss-blade
 php artisan risk-analyzer:scan --changed=origin/main   # code, frontend and infrastructure rules, on files changed since origin/main
-php artisan risk-analyzer:scan --frontend=client       # frontend code in client/ instead of resources/js (repeatable)
+php artisan risk-analyzer:scan --frontend              # only frontend checks (and npm advisories for it)
+php artisan risk-analyzer:scan --frontend=client       # the same, for the frontend in client/ instead of resources/js
+php artisan risk-analyzer:scan --infrastructure        # only Docker, compose, script and CI checks
 php artisan risk-analyzer:scan --offline               # no network: skips the OSV lookup, built-in support dates
 php artisan risk-analyzer:scan --format=sarif --output=risk-analyzer.sarif
 php artisan risk-analyzer:scan --format=markdown >> "$GITHUB_STEP_SUMMARY"
@@ -198,15 +201,16 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 The frontend rules read `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.vue` and `.html` (Angular templates) files in `frontend.paths`, which defaults to `resources/js` and `resources/ts`. `node_modules`, `dist`, `build`, `.angular`, tests, `*.min.js`, `*.d.ts` and `*.spec`/`*.test` files are skipped.
 
-A frontend that lives somewhere else, such as an Angular or React app in its own folder, is scanned with `--frontend`. It replaces `frontend.paths` for that run, takes paths relative to the project root or absolute ones, and can be repeated:
+A full scan includes the frontend rules. `--frontend` scans **only** the frontend: the frontend rules plus `vulnerable-dependency` for its JavaScript lockfiles, with no PHP, configuration, Composer or filesystem rules. Given folders, it scans those instead of `frontend.paths`, for example an Angular or React app in its own folder. Paths are relative to the project root or absolute, and the option can be repeated:
 
 ```bash
+php artisan risk-analyzer:scan --frontend                                  # resources/js and resources/ts
 php artisan risk-analyzer:scan --frontend=client
 php artisan risk-analyzer:scan --frontend=apps/admin --frontend=apps/shop
-php artisan risk-analyzer:scan --only=frontend --frontend=../storefront
+php artisan risk-analyzer:scan --frontend=client --skip=frontend-debug     # --only/--skip narrow the scope
 ```
 
-When such a folder has its own `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` or `bun.lock`, `vulnerable-dependency` checks it as well. `--skip=frontend` turns the frontend rules off.
+A frontend folder with its own `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` or `bun.lock` has that lockfile checked, in full scans too. Folders without one, such as `resources/js`, use the project's root lockfile. `--skip=frontend` leaves the frontend rules out of a full scan.
 
 The frontend rules match patterns; they don't run a JavaScript parser. Input is recognised when it is visible in the expression (`location.search`, `URLSearchParams`, `useParams()`, `useSearchParams()`, `$route.query`, `route.snapshot`, `event.data`...) or in a variable the same file assigns from it (`const params = new URLSearchParams(location.search)`). Values that reach a sink in other ways are reported as medium, to review. Inline suppressions work in JS (`// risk-analyzer-ignore xss-frontend -- sanitised on the server`) and in templates (`<!-- risk-analyzer-ignore xss-frontend -->`).
 
@@ -218,6 +222,14 @@ The infrastructure rules search `infrastructure.paths` (default: the project roo
 'infrastructure' => [
     'paths' => ['.', '/srv/deploy-scripts'],
 ],
+```
+
+`--infrastructure` scans **only** these files: the four rules above plus `unsupported-runtime` for the PHP and Node versions pinned in Dockerfiles, compose files and workflows (not the PHP running the scan). Given folders, it searches those instead of `infrastructure.paths`:
+
+```bash
+php artisan risk-analyzer:scan --infrastructure
+php artisan risk-analyzer:scan --infrastructure=docker --infrastructure=deploy
+php artisan risk-analyzer:scan --frontend --infrastructure                  # both scopes
 ```
 
 Like the frontend rules they match patterns, and comments are ignored. Suppress a line with a `#` comment on it or the line above:

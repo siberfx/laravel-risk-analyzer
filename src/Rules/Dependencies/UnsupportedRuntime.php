@@ -87,11 +87,15 @@ final class UnsupportedRuntime extends AbstractProjectRule
         $php = PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;
         $laravel = explode('.', $context->app->version())[0];
         $phpDates = $this->dates('php', self::PHP);
+        // An --infrastructure scan only looks at versions pinned in Docker, compose and CI files.
+        $pinsOnly = $context->isScoped();
 
-        yield from $this->check("PHP {$php}", $phpDates[$php] ?? null, 'php');
-        yield from $this->check("Laravel {$laravel}", $this->dates('laravel', self::LARAVEL)[$laravel] ?? null, 'laravel');
-        yield from $this->patchLevel($php, $phpDates[$php] ?? null);
-        yield from $this->composerConstraint($context, $phpDates);
+        if (! $pinsOnly) {
+            yield from $this->check("PHP {$php}", $phpDates[$php] ?? null, 'php');
+            yield from $this->check("Laravel {$laravel}", $this->dates('laravel', self::LARAVEL)[$laravel] ?? null, 'laravel');
+            yield from $this->patchLevel($php, $phpDates[$php] ?? null);
+            yield from $this->composerConstraint($context, $phpDates);
+        }
 
         foreach ($this->phpImages($context) as [$branch, $file, $line]) {
             yield from $this->check("PHP {$branch} (base image)", $phpDates[$branch] ?? null, "php-image.{$file}.{$branch}", $file, $line);
@@ -103,7 +107,11 @@ final class UnsupportedRuntime extends AbstractProjectRule
 
             $seen = [];
 
-            foreach (NodeVersions::detect($context, is_string($binary) ? $binary : false) as $node) {
+            foreach (NodeVersions::detect($context, is_string($binary) && ! $pinsOnly ? $binary : false) as $node) {
+                if ($pinsOnly && ($node['file'] === null || InfrastructureFile::kind($node['file']) === null)) {
+                    continue;
+                }
+
                 $anchor = 'node.'.($node['file'] ?? $node['source']).'.'.$node['major'];
 
                 if (! isset($seen[$anchor])) {
@@ -115,7 +123,7 @@ final class UnsupportedRuntime extends AbstractProjectRule
             }
         }
 
-        if ($context->production && $context->config('runtime.services', true)) {
+        if (! $pinsOnly && $context->production && $context->config('runtime.services', true)) {
             foreach ($this->services !== null ? ($this->services)($context) : ServiceVersions::detect($context) as $service) {
                 $cycle = ServiceVersions::cycle($service['product'], $service['version']);
                 $end = $cycle === null ? null : ($this->dates($service['product'], self::SERVICES[$service['product']] ?? [])[$cycle] ?? null);

@@ -26,6 +26,8 @@ final class ScanContext
      * @param  array<string, mixed>  $config  the "risk-analyzer" config
      * @param  list<string>|null  $onlyFiles  relative paths; limits code rules to these files (--changed)
      * @param  list<string>|null  $frontendPaths  folders that replace frontend.paths (--frontend)
+     * @param  list<string>|null  $infrastructurePaths  folders that replace infrastructure.paths (--infrastructure)
+     * @param  list<string>  $scopes  'frontend' and/or 'infrastructure' when the scan is limited to them; empty for a full scan
      */
     public function __construct(
         public readonly Application $app,
@@ -35,6 +37,8 @@ final class ScanContext
         public readonly bool $offline = false,
         public readonly ?array $onlyFiles = null,
         public readonly ?array $frontendPaths = null,
+        public readonly ?array $infrastructurePaths = null,
+        public readonly array $scopes = [],
     ) {
         $this->basePath = rtrim(str_replace('\\', '/', $basePath), '/');
     }
@@ -147,10 +151,30 @@ final class ScanContext
     public function infrastructureFiles(): array
     {
         return $this->infrastructureFiles ??= iterator_to_array($this->walk(
-            $this->roots((array) $this->config('infrastructure.paths', ['.'])),
+            $this->infrastructureRoots(),
             (array) $this->config('infrastructure.exclude', []),
             fn (string $relative) => InfrastructureFile::kind($relative) !== null,
         ), false);
+    }
+
+    /**
+     * Folders searched for infrastructure files: the --infrastructure folders
+     * when given, otherwise infrastructure.paths.
+     *
+     * @return list<string>
+     */
+    public function infrastructureRoots(): array
+    {
+        return $this->roots($this->infrastructurePaths ?? (array) $this->config('infrastructure.paths', ['.']));
+    }
+
+    /**
+     * Whether the scan is limited to frontend and/or infrastructure checks
+     * (--frontend, --infrastructure) rather than covering everything.
+     */
+    public function isScoped(): bool
+    {
+        return $this->scopes !== [];
     }
 
     /**

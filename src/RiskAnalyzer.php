@@ -119,7 +119,8 @@ final class RiskAnalyzer
      * @param  list<string>  $skip  rule ids or category names to leave out
      * @param  list<string>|null  $files  restrict code rules to these relative paths
      * @param  string|false|null  $baseline  baseline path, false to ignore it, null for the configured one
-     * @param  list<string>|null  $frontend  frontend folders that replace frontend.paths
+     * @param  list<string>|null  $frontend  limit the scan to frontend checks (null: no limit); folders that replace frontend.paths, or [] for the configured ones
+     * @param  list<string>|null  $infrastructure  limit the scan to Docker/CI/script checks (null: no limit); folders that replace infrastructure.paths, or [] for the configured ones
      */
     public function scan(
         array $only = [],
@@ -130,19 +131,24 @@ final class RiskAnalyzer
         string|false|null $baseline = null,
         ?string $basePath = null,
         ?array $frontend = null,
+        ?array $infrastructure = null,
     ): Report {
         $started = microtime(true);
         $production ??= $this->app->environment((array) ($this->config['production_environments'] ?? ['production']));
 
-        $context = new ScanContext($this->app, $basePath ?? $this->app->basePath(), $this->config, $production, $offline, $files, $frontend);
+        $scopes = array_keys(array_filter(['frontend' => $frontend, 'infrastructure' => $infrastructure], fn (?array $folders) => $folders !== null));
+        $context = new ScanContext($this->app, $basePath ?? $this->app->basePath(), $this->config, $production, $offline, $files,
+            $frontend ?: null, $infrastructure ?: null, $scopes);
 
-        foreach ($frontend ?? [] as $folder) {
-            if (! is_dir($context->basePath($folder))) {
-                throw new InvalidArgumentException("Frontend folder [{$folder}] does not exist.");
+        foreach (['Frontend' => $frontend, 'Infrastructure' => $infrastructure] as $label => $folders) {
+            foreach ($folders ?? [] as $folder) {
+                if (! is_dir($context->basePath($folder))) {
+                    throw new InvalidArgumentException("{$label} folder [{$folder}] does not exist.");
+                }
             }
         }
 
-        $rules = $this->select($this->rules(), $only, $skip);
+        $rules = $this->select($this->rules(), $only, $skip, $scopes);
         $findings = [];
 
         $codeRules = array_values(array_filter($rules, fn (Rule $rule) => $rule instanceof CodeRule));
@@ -178,7 +184,32 @@ final class RiskAnalyzer
             ? array_values(array_filter($context->frontendRoots(), fn (string $root) => is_dir($context->basePath($root))))
             : [];
 
-        return new Report($findings, $rules, microtime(true) - $started, $production, $scannedFrontend);
+        $scannedInfrastructure = array_any($rules, fn (Rule $rule) => $rule->category() === Category::Infrastructure)
+            ? array_values(array_filter($context->infrastructureRoots(), fn (string $root) => is_dir($context->basePath($root))))
+            : [];
+
+        return new Report($findings, $rules, microtime(true) - $started, $production, $scannedFrontend,
+            array_map(fn (string $root) => $root === '' ? '.' : $root, $scannedInfrastructure));
+    }
+
+    /**
+     * The rules that belong to the requested scopes: each scope's category
+     * plus the dependency rule that covers it (npm advisories for frontend
+     * code, base image versions for infrastructure). All rules when unscoped.
+     *
+     * @param  array<string, Rule>  $rules
+     * @param  list<string>  $scopes
+     * @return array<string, Rule>
+     */
+    private function inScope(array $rules, array $scopes): array
+    {
+        if ($scopes === []) {
+            return $rules;
+        }
+
+        $related = ['frontend' => 'vulnerable-dependency', 'infrastructure' => 'unsupported-runtime'];
+
+        return array_filter($rules, fn (Rule $rule) => array_any($scopes, fn (string $scope) => $rule->category()->value === $scope || $rule->id() === $related[$scope]));
     }
 
     public function baselinePath(?string $path = null, ?ScanContext $context = null): string
@@ -196,9 +227,10 @@ final class RiskAnalyzer
      * @param  array<string, Rule>  $rules
      * @param  list<string>  $only
      * @param  list<string>  $skip
+     * @param  list<string>  $scopes
      * @return array<string, Rule>
      */
-    private function select(array $rules, array $only, array $skip): array
+    private function select(array $rules, array $only, array $skip, array $scopes = []): array
     {
         $matches = fn (Rule $rule, array $selectors) => in_array($rule->id(), $selectors, true)
             || in_array($rule->category()->value, $selectors, true);
@@ -209,7 +241,13 @@ final class RiskAnalyzer
             }
         }
 
-        return array_filter($rules, fn (Rule $rule) => ($only === [] || $matches($rule, $only)) && ! $matches($rule, $skip));
+        $selected = array_filter($this->inScope($rules, $scopes), fn (Rule $rule) => ($only === [] || $matches($rule, $only)) && ! $matches($rule, $skip));
+
+        if ($selected === [] && $only !== [] && $scopes !== []) {
+            throw new InvalidArgumentException('None of ['.implode(', ', $only).'] belong to the --'.implode(' / --', $scopes).' scan.');
+        }
+
+        return $selected;
     }
 
     /**

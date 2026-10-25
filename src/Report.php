@@ -13,6 +13,7 @@ final class Report implements JsonSerializable
      * @param  list<Finding>  $findings  sorted by severity, then location
      * @param  array<string, Rule>  $rules  rules that ran, by id
      * @param  list<string>  $frontend  frontend folders that were scanned
+     * @param  list<string>  $infrastructure  infrastructure folders that were searched
      */
     public function __construct(
         public readonly array $findings,
@@ -20,6 +21,7 @@ final class Report implements JsonSerializable
         public readonly float $duration,
         public readonly bool $production,
         public readonly array $frontend = [],
+        public readonly array $infrastructure = [],
     ) {}
 
     /**
@@ -101,6 +103,7 @@ final class Report implements JsonSerializable
             'production' => $this->production,
             'duration' => round($this->duration, 3),
             'frontend' => $this->frontend,
+            'infrastructure' => $this->infrastructure,
             'summary' => [
                 ...$this->counts(),
                 'baselined' => $this->baselined()->count(),
