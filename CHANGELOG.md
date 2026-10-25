@@ -2,6 +2,26 @@
 
 All notable changes to this package are documented here.
 
+## [2.6.0] - 2026-10-25
+
+### Added
+- A `frontend` rule category for React, Vue and Angular code: `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.vue` and Angular `.html` templates in `frontend.paths` (default `resources/js`, `resources/ts`). `node_modules`, build output, tests, minified bundles and type declarations are skipped.
+  - `xss-frontend`: `dangerouslySetInnerHTML`, `v-html`, `[innerHTML]`, `bypassSecurityTrust*()`, `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write`. High when URL, route or message input reaches them (directly or through a variable assigned from it in the same file), medium for other values, low when sanitised with DOMPurify. String literals and constants are skipped.
+  - `frontend-secret`: provider tokens and literal secrets in frontend code, which ship to every visitor (Google browser keys are low), and `VITE_`/`MIX_`/`NG_APP_`/`REACT_APP_`/`VUE_APP_`/`NEXT_PUBLIC_` variables named like secrets in `.env` files or read in code, which bundlers copy into the build.
+  - `frontend-code-execution`: `eval()`, `new Function()`, `setTimeout`/`setInterval` with a string.
+  - `frontend-open-redirect`: `location.href`, `location.assign/replace`, `window.open` and `href`/`src` bindings set to URL or route input; `javascript:` URLs in templates (placeholders like `javascript:void(0)` are low).
+  - `frontend-postmessage`: `postMessage(…, '*')` and window `message` listeners that never check `event.origin`.
+  - `frontend-token-storage`: auth tokens (low) and passwords or secrets (medium) written to `localStorage`/`sessionStorage`.
+  - `frontend-debug`: `debugger` statements (medium) and `console.log/debug/trace/dir/table` calls (low, one finding per file).
+- `--frontend` for `risk-analyzer:scan` and `risk-analyzer:baseline`: frontend folders to scan instead of `frontend.paths`, e.g. a separate SPA (`--frontend=client`, repeatable or comma-separated, relative or absolute). A missing folder is an error. The console header lists the scanned folders, and JSON reports have a `frontend` key.
+- `vulnerable-dependency` checks lockfiles inside frontend folders (`client/package-lock.json`...); upgrade commands start with `cd client &&`.
+- `public-exposure` reports built source maps (`*.js.map`, `*.css.map`) under `public/` as low, one finding per folder.
+- `frontend` config section: `paths`, `extensions`, `exclude`. `risk-analyzer:config-sync` adds it to a published config.
+
+### Changed
+- `--changed` limits frontend rules to the changed files, like the PHP code rules.
+- `secrets.allow` also applies to `frontend-secret`.
+
 ## [2.5.1] - 2026-10-25
 
 ### Added
