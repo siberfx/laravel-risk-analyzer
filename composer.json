@@ -1,6 +1,6 @@
 {
     "name": "siberfx/laravel-risk-analyzer",
-    "description": "Security scanner for Laravel 12 & 13: AST taint analysis of your code, checks of the booted app's config and routes, OSV dependency advisories, baselines and SARIF output.",
+    "description": "Security scanner for Laravel 12 & 13: AST taint analysis of your code, React/Vue/Angular frontend checks, checks of the booted app's config and routes, OSV dependency advisories, baselines and SARIF output.",
     "keywords": [
         "laravel",
         "security",

@@ -26,7 +26,7 @@ final class VulnerableDependencies extends AbstractProjectRule
 
     public function description(): string
     {
-        return 'Packages in composer.lock, package-lock.json, yarn.lock, pnpm-lock.yaml and bun.lock with published advisories, looked up in the OSV.dev database (GitHub Security Advisories, FriendsOfPHP, npm). Severity comes from the advisory; the lowest fixing version is suggested.';
+        return 'Packages in composer.lock, package-lock.json, yarn.lock, pnpm-lock.yaml and bun.lock (also inside frontend folders such as a separate SPA) with published advisories, looked up in the OSV.dev database (GitHub Security Advisories, FriendsOfPHP, npm). Severity comes from the advisory; the lowest fixing version is suggested.';
     }
 
     public function category(): Category
@@ -52,17 +52,23 @@ final class VulnerableDependencies extends AbstractProjectRule
             ...($javascript ? Lockfiles::javascript($context) : []),
         ];
 
-        if ($javascript && $context->exists('bun.lockb') && ! $context->exists('bun.lock')) {
-            yield $this->finding('bun.lockb is a binary lockfile and cannot be checked for advisories.', Severity::Info,
-                'Switch to the text lockfile with `bun install --save-text-lockfile` (the default since Bun 1.2) and commit bun.lock.',
-                'bun.lockb', anchor: 'bun.lockb');
-        }
-
         $queries = [];
 
-        foreach ($packages as $package) {
-            if (($includeDev || ! $package['dev']) && ! str_starts_with($package['version'], 'dev-')) {
-                $queries[$package['ecosystem'].':'.$package['name'].'@'.$package['version']] = $package;
+        foreach ($javascript ? ['', ...$this->frontendFolders($context)] : [''] as $folder) {
+            $scope = $folder === '' ? $context : new ScanContext($context->app, $context->basePath($folder), $context->config, $context->production, $context->offline);
+            $prefix = $folder === '' ? '' : $folder.'/';
+
+            if ($javascript && $scope->exists('bun.lockb') && ! $scope->exists('bun.lock')) {
+                yield $this->finding("{$prefix}bun.lockb is a binary lockfile and cannot be checked for advisories.", Severity::Info,
+                    'Switch to the text lockfile with `bun install --save-text-lockfile` (the default since Bun 1.2) and commit bun.lock.',
+                    $prefix.'bun.lockb', anchor: $prefix.'bun.lockb');
+            }
+
+            foreach ($folder === '' ? $packages : Lockfiles::javascript($scope) as $package) {
+                if (($includeDev || ! $package['dev']) && ! str_starts_with($package['version'], 'dev-')) {
+                    $package['source'] = $prefix.$package['source'];
+                    $queries[$prefix.$package['ecosystem'].':'.$package['name'].'@'.$package['version']] = $package;
+                }
             }
         }
 
@@ -90,13 +96,15 @@ final class VulnerableDependencies extends AbstractProjectRule
                 }
 
                 $fix = $advisory['fixed'] !== null ? "Upgrade to {$advisory['fixed']} or later." : 'No fixed version is published yet; check the advisory for workarounds.';
-                $command = match ($package['source']) {
+                $command = match (basename($package['source'])) {
                     'composer.lock' => "composer update {$package['name']} --with-dependencies",
                     'yarn.lock' => "yarn up {$package['name']}@^{$advisory['fixed']}, or yarn upgrade on Yarn 1",
                     'pnpm-lock.yaml' => "pnpm update {$package['name']}@^{$advisory['fixed']}",
                     'bun.lock' => "bun update {$package['name']}@^{$advisory['fixed']}",
                     default => "npm install {$package['name']}@^{$advisory['fixed']}",
                 };
+                $folder = dirname($package['source']);
+                $command = $folder === '.' ? $command : "cd {$folder} && {$command}";
                 $cves = array_filter($advisory['aliases'], fn (string $alias) => str_starts_with($alias, 'CVE-') && $alias !== $advisory['id']);
                 $ids = implode(' / ', [$advisory['id'], ...$cves]);
 
@@ -119,6 +127,28 @@ final class VulnerableDependencies extends AbstractProjectRule
                 );
             }
         }
+    }
+
+    /**
+     * Frontend folders (frontend.paths or --frontend) inside or outside the
+     * project that have their own JavaScript lockfile, e.g. a separate SPA.
+     *
+     * @return list<string>
+     */
+    private function frontendFolders(ScanContext $context): array
+    {
+        $folders = [];
+
+        foreach ($context->frontendRoots() as $root) {
+            $folder = $context->relative($context->basePath($root));
+
+            if ($folder !== '' && $context->basePath($folder) !== $context->basePath()
+                && array_any(['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb'], fn (string $lock) => $context->exists($folder.'/'.$lock))) {
+                $folders[] = $folder;
+            }
+        }
+
+        return array_values(array_unique($folders));
     }
 
     private function client(ScanContext $context): OsvClient

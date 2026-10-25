@@ -28,6 +28,7 @@ final class ScanCommand extends Command
         {--production : Treat the current environment as production}
         {--dev : Treat the current environment as development: skip production-only checks}
         {--offline : Skip network lookups (dependency advisories)}
+        {--frontend=* : Frontend folders to scan instead of frontend.paths (e.g. a separate SPA)}
         {--changed= : Only scan code changed against a git ref (empty for uncommitted changes)}
         {--baseline= : Baseline file to use instead of the configured one}
         {--no-baseline : Ignore the baseline}
@@ -64,6 +65,7 @@ final class ScanCommand extends Command
                 offline: (bool) $this->option('offline'),
                 files: $files,
                 baseline: $this->option('no-baseline') ? false : $this->stringOption('baseline'),
+                frontend: $this->pathsOption('frontend'),
             );
         } catch (InvalidArgumentException|RuntimeException $exception) {
             $this->components->error($exception->getMessage());
@@ -102,6 +104,11 @@ final class ScanCommand extends Command
             },
             $report->duration,
         ));
+
+        if ($report->frontend !== []) {
+            $this->line('  <fg=gray>frontend: '.OutputFormatter::escape(implode(', ', $report->frontend)).'</>');
+        }
+
         $this->newLine();
 
         if ($findings) {
@@ -186,6 +193,26 @@ final class ScanCommand extends Command
         $value = $this->option($name);
 
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * Folder list option, case kept; null when not given.
+     *
+     * @return list<string>|null
+     */
+    private function pathsOption(string $name): ?array
+    {
+        $paths = [];
+
+        foreach ((array) $this->option($name) as $value) {
+            foreach (explode(',', (string) $value) as $item) {
+                if (trim($item) !== '') {
+                    $paths[] = trim($item);
+                }
+            }
+        }
+
+        return $paths === [] ? null : $paths;
     }
 
     /**

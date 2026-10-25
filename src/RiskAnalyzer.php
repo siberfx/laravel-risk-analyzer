@@ -11,6 +11,7 @@ use Siberfx\RiskAnalyzer\Contracts\Rule;
 use Siberfx\RiskAnalyzer\Rules\Code;
 use Siberfx\RiskAnalyzer\Rules\Dependencies;
 use Siberfx\RiskAnalyzer\Rules\Filesystem;
+use Siberfx\RiskAnalyzer\Rules\Frontend;
 use Siberfx\RiskAnalyzer\Rules\Runtime;
 use Throwable;
 
@@ -33,6 +34,13 @@ final class RiskAnalyzer
         Code\InsecureRandomness::class,
         Code\DisabledTlsVerification::class,
         Code\DebugLeftovers::class,
+        Frontend\FrontendXss::class,
+        Frontend\FrontendSecret::class,
+        Frontend\FrontendCodeExecution::class,
+        Frontend\FrontendOpenRedirect::class,
+        Frontend\FrontendPostMessage::class,
+        Frontend\FrontendTokenStorage::class,
+        Frontend\FrontendDebug::class,
         Runtime\DebugMode::class,
         Runtime\EncryptionKey::class,
         Runtime\SessionCookies::class,
@@ -106,6 +114,7 @@ final class RiskAnalyzer
      * @param  list<string>  $skip  rule ids or category names to leave out
      * @param  list<string>|null  $files  restrict code rules to these relative paths
      * @param  string|false|null  $baseline  baseline path, false to ignore it, null for the configured one
+     * @param  list<string>|null  $frontend  frontend folders that replace frontend.paths
      */
     public function scan(
         array $only = [],
@@ -115,11 +124,19 @@ final class RiskAnalyzer
         ?array $files = null,
         string|false|null $baseline = null,
         ?string $basePath = null,
+        ?array $frontend = null,
     ): Report {
         $started = microtime(true);
         $production ??= $this->app->environment((array) ($this->config['production_environments'] ?? ['production']));
 
-        $context = new ScanContext($this->app, $basePath ?? $this->app->basePath(), $this->config, $production, $offline, $files);
+        $context = new ScanContext($this->app, $basePath ?? $this->app->basePath(), $this->config, $production, $offline, $files, $frontend);
+
+        foreach ($frontend ?? [] as $folder) {
+            if (! is_dir($context->basePath($folder))) {
+                throw new InvalidArgumentException("Frontend folder [{$folder}] does not exist.");
+            }
+        }
+
         $rules = $this->select($this->rules(), $only, $skip);
         $findings = [];
 
@@ -137,7 +154,7 @@ final class RiskAnalyzer
             }
 
             // File-scoped scans (--changed) only make sense for code rules.
-            if ($files !== null && $rule->category() !== Category::Code) {
+            if ($files !== null && ! in_array($rule->category(), [Category::Code, Category::Frontend], true)) {
                 continue;
             }
 
@@ -152,7 +169,11 @@ final class RiskAnalyzer
 
         $findings = $this->finalise($findings, $baseline === false ? new Baseline : Baseline::load($this->baselinePath($baseline, $context)));
 
-        return new Report($findings, $rules, microtime(true) - $started, $production);
+        $scannedFrontend = array_any($rules, fn (Rule $rule) => $rule->category() === Category::Frontend)
+            ? array_values(array_filter($context->frontendRoots(), fn (string $root) => is_dir($context->basePath($root))))
+            : [];
+
+        return new Report($findings, $rules, microtime(true) - $started, $production, $scannedFrontend);
     }
 
     public function baselinePath(?string $path = null, ?ScanContext $context = null): string
@@ -223,7 +244,7 @@ final class RiskAnalyzer
             return $rule;
         }
 
-        $instance = $this->app->make($rule, $rule === Code\HardcodedSecret::class
+        $instance = $this->app->make($rule, in_array($rule, [Code\HardcodedSecret::class, Frontend\FrontendSecret::class], true)
             ? ['allow' => (array) ($this->config['secrets']['allow'] ?? [])]
             : []);
 

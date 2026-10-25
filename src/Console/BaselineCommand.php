@@ -3,6 +3,7 @@
 namespace Siberfx\RiskAnalyzer\Console;
 
 use Illuminate\Console\Command;
+use InvalidArgumentException;
 use Siberfx\RiskAnalyzer\Baseline;
 use Siberfx\RiskAnalyzer\RiskAnalyzer;
 
@@ -12,7 +13,8 @@ final class BaselineCommand extends Command
         {--path= : Where to write the baseline (defaults to the configured path)}
         {--production : Treat the current environment as production}
         {--dev : Treat the current environment as development: skip production-only checks}
-        {--offline : Skip network lookups (dependency advisories)}';
+        {--offline : Skip network lookups (dependency advisories)}
+        {--frontend=* : Frontend folders to scan instead of frontend.paths (e.g. a separate SPA)}';
 
     protected $description = 'Record the current findings as accepted, so only new ones fail future scans';
 
@@ -24,15 +26,24 @@ final class BaselineCommand extends Command
             return self::INVALID;
         }
 
-        $report = $riskAnalyzer->scan(
-            production: match (true) {
-                (bool) $this->option('production') => true,
-                (bool) $this->option('dev') => false,
-                default => null,
-            },
-            offline: (bool) $this->option('offline'),
-            baseline: false,
-        );
+        $frontend = array_values(array_filter(array_map('trim', explode(',', implode(',', (array) $this->option('frontend'))))));
+
+        try {
+            $report = $riskAnalyzer->scan(
+                production: match (true) {
+                    (bool) $this->option('production') => true,
+                    (bool) $this->option('dev') => false,
+                    default => null,
+                },
+                offline: (bool) $this->option('offline'),
+                baseline: false,
+                frontend: $frontend === [] ? null : $frontend,
+            );
+        } catch (InvalidArgumentException $exception) {
+            $this->components->error($exception->getMessage());
+
+            return self::INVALID;
+        }
 
         // Scanner errors are about this run, not accepted findings.
         $findings = array_filter($report->findings, fn ($finding) => $finding->rule !== 'scanner-error');

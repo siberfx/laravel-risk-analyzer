@@ -20,6 +20,7 @@ final class ScanContext
     /**
      * @param  array<string, mixed>  $config  the "risk-analyzer" config
      * @param  list<string>|null  $onlyFiles  relative paths; limits code rules to these files (--changed)
+     * @param  list<string>|null  $frontendPaths  folders that replace frontend.paths (--frontend)
      */
     public function __construct(
         public readonly Application $app,
@@ -28,13 +29,23 @@ final class ScanContext
         public readonly bool $production = false,
         public readonly bool $offline = false,
         public readonly ?array $onlyFiles = null,
+        public readonly ?array $frontendPaths = null,
     ) {
         $this->basePath = rtrim(str_replace('\\', '/', $basePath), '/');
     }
 
     public function basePath(string $path = ''): string
     {
+        if (self::isAbsolute($path)) {
+            return rtrim(str_replace('\\', '/', $path), '/');
+        }
+
         return $path === '' ? $this->basePath : $this->basePath.'/'.ltrim($path, '/');
+    }
+
+    public static function isAbsolute(string $path): bool
+    {
+        return preg_match('#^([a-zA-Z]:)?[\\\\/]#', $path) === 1;
     }
 
     public function relative(string $absolute): string
@@ -103,11 +114,63 @@ final class ScanContext
      */
     public function files(array $suffixes): iterable
     {
-        $exclude = array_values(array_map(fn ($path) => trim(str_replace('\\', '/', (string) $path), '/'), (array) $this->config('exclude', [])));
+        yield from $this->walk(
+            (array) $this->config('paths', []),
+            (array) $this->config('exclude', []),
+            fn (string $relative) => $this->matchesSuffix($relative, $suffixes),
+        );
+    }
+
+    /**
+     * Folders holding the frontend sources (React, Vue, Angular...): the
+     * --frontend folders when given, otherwise frontend.paths. Relative to
+     * the project root unless absolute.
+     *
+     * @return list<string>
+     */
+    public function frontendRoots(): array
+    {
+        $roots = $this->frontendPaths ?? (array) $this->config('frontend.paths', []);
+
+        return array_values(array_unique(array_map(function ($path) {
+            $path = str_replace('\\', '/', (string) $path);
+
+            // "." and "./client" are relative to the project root.
+            return self::isAbsolute($path) ? rtrim($path, '/') : trim((string) preg_replace('#^\.(/|$)#', '', $path), '/');
+        }, $roots)));
+    }
+
+    /**
+     * Frontend source files (frontend.extensions) under frontendRoots(),
+     * without minified bundles, type declarations and tests.
+     *
+     * @return iterable<string>
+     */
+    public function frontendFiles(): iterable
+    {
+        $extensions = array_values(array_map(fn ($extension) => '.'.ltrim((string) $extension, '.'), (array) $this->config('frontend.extensions', [])));
+
+        yield from $this->walk(
+            $this->frontendRoots(),
+            (array) $this->config('frontend.exclude', []),
+            fn (string $relative) => $this->matchesSuffix($relative, $extensions)
+                && ! preg_match('/\.(min|d|spec|test|stories)\.[cm]?[jt]sx?$/', $relative),
+        );
+    }
+
+    /**
+     * @param  array<mixed>  $roots
+     * @param  array<mixed>  $exclude
+     * @param  callable(string): bool  $accept
+     * @return iterable<string>
+     */
+    private function walk(array $roots, array $exclude, callable $accept): iterable
+    {
+        $exclude = array_values(array_map(fn ($path) => trim(str_replace('\\', '/', (string) $path), '/'), $exclude));
         $seen = [];
 
-        foreach ((array) $this->config('paths', []) as $root) {
-            $directory = $this->basePath(trim($root, '/'));
+        foreach ($roots as $root) {
+            $directory = $this->basePath(self::isAbsolute((string) $root) ? (string) $root : trim((string) $root, '/'));
 
             if (! is_dir($directory)) {
                 continue;
@@ -120,8 +183,10 @@ final class ScanContext
             /** @var SplFileInfo $file */
             foreach ($iterator as $file) {
                 $relative = $this->relative($file->getPathname());
+                // Exclusions apply inside the root, so an absolute root is not excluded by its own path.
+                $inner = substr(str_replace('\\', '/', $file->getPathname()), strlen($directory) + 1);
 
-                if (isset($seen[$relative]) || ! $this->matchesSuffix($relative, $suffixes) || $this->isExcluded($relative, $exclude)) {
+                if (isset($seen[$relative]) || ! $accept($relative) || $this->isExcluded($relative, $exclude) || $this->isExcluded($inner, $exclude)) {
                     continue;
                 }
 

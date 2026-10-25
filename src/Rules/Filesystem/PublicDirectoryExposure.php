@@ -53,7 +53,7 @@ final class PublicDirectoryExposure extends AbstractProjectRule
 
     public function description(): string
     {
-        return 'Files the web server serves as-is from public/: environment files, .git, database dumps, keys, backups, phpinfo/adminer scripts and logs. Folders linked into public/ (filesystems.links, e.g. public/storage) are checked for PHP files, dumps, keys, logs and .htaccess.';
+        return 'Files the web server serves as-is from public/: environment files, .git, database dumps, keys, backups, phpinfo/adminer scripts and logs. Folders linked into public/ (filesystems.links, e.g. public/storage) are checked for PHP files, dumps, keys, logs and .htaccess. Built source maps (*.js.map, *.css.map) are reported as low.';
     }
 
     public function category(): Category
@@ -101,6 +101,41 @@ final class PublicDirectoryExposure extends AbstractProjectRule
         }
 
         yield from $this->linkedFolders($context);
+        yield from $this->sourceMaps($context);
+    }
+
+    /**
+     * Built source maps (public/build/assets/*.js.map...) publish the original
+     * frontend source. One finding per folder: the file names are hashed.
+     *
+     * @return iterable<Finding>
+     */
+    private function sourceMaps(ScanContext $context): iterable
+    {
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($context->basePath('public'), FilesystemIterator::SKIP_DOTS));
+        $iterator->setMaxDepth(4);
+        $maps = [];
+
+        /** @var SplFileInfo $file */
+        foreach ($iterator as $file) {
+            $relative = $context->relative($file->getPathname());
+
+            if (preg_match('/\.(js|mjs|css)\.map$/', $relative) && ! str_starts_with($relative, 'public/storage/')) {
+                $maps[dirname($relative)][] = $relative;
+            }
+        }
+
+        foreach ($maps as $folder => $files) {
+            sort($files);
+
+            yield $this->finding(
+                count($files) === 1 ? "{$files[0]} is a source map: it publishes the original frontend source." : "{$folder} holds ".count($files).' source maps (e.g. '.basename($files[0]).'): they publish the original frontend source.',
+                Severity::Low,
+                'Build without source maps for production (build.sourcemap: false in vite.config, the default), or upload them to your error tracker and delete them from public/.',
+                $files[0],
+                anchor: 'source-maps:'.$folder,
+            );
+        }
     }
 
     /**

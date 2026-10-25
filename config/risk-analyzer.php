@@ -44,6 +44,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend code
+    |--------------------------------------------------------------------------
+    |
+    | Folders (relative to the project root, or absolute) whose React, Vue
+    | and Angular sources are checked by the frontend rules. --frontend
+    | replaces this list for one run, e.g. for a separate SPA folder; a
+    | lockfile inside such a folder is also checked for advisories.
+    |
+    */
+
+    'frontend' => [
+        'paths' => [
+            'resources/js',
+            'resources/ts',
+        ],
+        'extensions' => ['js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'vue', 'html'],
+        'exclude' => [
+            'node_modules',
+            'dist',
+            'build',
+            '.angular',
+            '.next',
+            '.nuxt',
+            'coverage',
+            'vendor',
+            'tests',
+            '__tests__',
+            'e2e',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Production environments
     |--------------------------------------------------------------------------
     |

@@ -7,7 +7,7 @@
 [![Laravel](https://img.shields.io/badge/Laravel-12.x%20%7C%2013.x-FF2D20?style=flat-square&logo=laravel&logoColor=white)](https://laravel.com)
 [![License](https://img.shields.io/github/license/siberfx/laravel-risk-analyzer.svg?style=flat-square)](LICENSE)
 
-Risk Analyzer finds security problems in a Laravel application: in its code, its running configuration and routes, its dependencies and its files.
+Risk Analyzer finds security problems in a Laravel application: in its code (PHP, Blade, and React, Vue and Angular frontends), its running configuration and routes, its dependencies and its files.
 
 It does not grep source text. It **parses your PHP** and **follows request input through your code** (taint analysis), so it can tell these apart:
 
@@ -19,12 +19,13 @@ DB::select('select * from users where id = ?', [$id]); // bindings              
 
 Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
-- 35 rules across code, configuration and routes, dependencies and filesystem
+- 42 rules across code, frontend code, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
 - Severity reflects reachability: user input reaching a sink ranks higher than a runtime value
 - Inline suppressions with reasons: `// risk-analyzer-ignore sql-injection -- table name comes from an enum`
 - Baselines to adopt it on an existing project and only gate **new** findings
 - `--changed` to scan only the files a branch touches
+- Frontend checks for React, Vue and Angular in `resources/js`, or a separate SPA folder with `--frontend=client`
 - Console, JSON, **SARIF** (GitHub code scanning) and Markdown (PR comments / job summaries) output
 - A `Report::assertClean()` helper to run the scan inside your own test suite
 - Custom rules: an AST rule takes about 15 lines
@@ -80,9 +81,10 @@ php artisan risk-analyzer:scan                         # everything, fails on "h
 php artisan risk-analyzer:scan --production            # apply production checks (debug mode, cookies, dev tools...)
 php artisan risk-analyzer:scan --dev                   # skip production-only checks, even when APP_ENV=production
 php artisan risk-analyzer:scan --fail-on=medium
-php artisan risk-analyzer:scan --only=code             # categories: code, runtime, dependencies, filesystem
+php artisan risk-analyzer:scan --only=code             # categories: code, frontend, runtime, dependencies, filesystem
 php artisan risk-analyzer:scan --only=sql-injection,ssrf --skip=xss-blade
-php artisan risk-analyzer:scan --changed=origin/main   # code rules only, on files changed since origin/main
+php artisan risk-analyzer:scan --changed=origin/main   # code and frontend rules only, on files changed since origin/main
+php artisan risk-analyzer:scan --frontend=client       # frontend code in client/ instead of resources/js (repeatable)
 php artisan risk-analyzer:scan --offline               # no network: skips the OSV lookup, built-in support dates
 php artisan risk-analyzer:scan --format=sarif --output=risk-analyzer.sarif
 php artisan risk-analyzer:scan --format=markdown >> "$GITHUB_STEP_SUMMARY"
@@ -95,7 +97,7 @@ php artisan risk-analyzer:config-sync                  # add new package options
 Sample output:
 
 ```
-  RISK ANALYZER  35 rules · production profile · 1.84s
+  RISK ANALYZER  42 rules · production profile · 1.84s
 
   CRITICAL sql-injection  app/Http/Controllers/ReportController.php:22
            Request input flows into raw SQL passed to DB::select().
@@ -135,6 +137,18 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `tls-verification-disabled` | `withoutVerifying()`, `'verify' => false`, `CURLOPT_SSL_VERIFYPEER` off |
 | `debug-leftover` | `dd`, `dump`, `ray`, `var_dump`, `->dd()`, `phpinfo()` |
 
+### Frontend code (React, Vue, Angular)
+
+| Rule | Looks for |
+| --- | --- |
+| `xss-frontend` | `dangerouslySetInnerHTML`, `v-html`, `[innerHTML]`, `bypassSecurityTrust*()`, `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write`: URL or route input (high), other values to review (medium), DOMPurify-sanitised (low) |
+| `frontend-secret` | Provider tokens and literal secrets in JS/TS/Vue (shipped to every visitor), and `VITE_`/`MIX_`/`NG_APP_`/`REACT_APP_` env variables named like secrets, which the bundler copies into the build |
+| `frontend-code-execution` | `eval()`, `new Function()`, `setTimeout`/`setInterval` with a string |
+| `frontend-open-redirect` | `location.href`, `location.assign/replace`, `window.open`, `href`/`src` bindings set to URL or route input; `javascript:` URLs in templates |
+| `frontend-postmessage` | `postMessage(data, '*')`, window `message` listeners that never check `event.origin` |
+| `frontend-token-storage` | Auth tokens (low) and passwords or secrets (medium) in `localStorage`/`sessionStorage` |
+| `frontend-debug` | `debugger` statements, `console.log`/`debug`/`trace` calls (one finding per file) |
+
 ### Configuration & routes (booted application)
 
 | Rule | Looks for |
@@ -157,7 +171,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 | Rule | Looks for |
 | --- | --- |
-| `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version |
+| `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version. Lockfiles inside frontend folders (a separate SPA) are checked too |
 | `abandoned-package` | Packages marked abandoned (from the lock file, offline) |
 | `composer-hardening` | `secure-http: false`, HTTP repositories, `allow-plugins: true`, unlisted plugins, missing lock |
 | `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions; in production, the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses |
@@ -166,9 +180,25 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 | Rule | Looks for |
 | --- | --- |
-| `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/`, and PHP files, dumps, keys, logs and `.htaccess` in folders linked into it (`storage:link`) |
+| `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/`, and PHP files, dumps, keys, logs and `.htaccess` in folders linked into it (`storage:link`); built source maps (`*.js.map`, low) |
 | `secrets-in-git` | `.env`, OAuth keys, `auth.json`, private keys **committed to git** (asks `git ls-files`) |
 | `file-permissions` | `.env`, `auth.json` and the Passport key readable or writable by every user, `storage/` and `bootstrap/cache` set to 777 (not on Windows) |
+
+## Frontend code
+
+The frontend rules read `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.vue` and `.html` (Angular templates) files in `frontend.paths`, which defaults to `resources/js` and `resources/ts`. `node_modules`, `dist`, `build`, `.angular`, tests, `*.min.js`, `*.d.ts` and `*.spec`/`*.test` files are skipped.
+
+A frontend that lives somewhere else, such as an Angular or React app in its own folder, is scanned with `--frontend`. It replaces `frontend.paths` for that run, takes paths relative to the project root or absolute ones, and can be repeated:
+
+```bash
+php artisan risk-analyzer:scan --frontend=client
+php artisan risk-analyzer:scan --frontend=apps/admin --frontend=apps/shop
+php artisan risk-analyzer:scan --only=frontend --frontend=../storefront
+```
+
+When such a folder has its own `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` or `bun.lock`, `vulnerable-dependency` checks it as well. `--skip=frontend` turns the frontend rules off.
+
+The frontend rules match patterns; they don't run a JavaScript parser. Input is recognised when it is visible in the expression (`location.search`, `URLSearchParams`, `useParams()`, `useSearchParams()`, `$route.query`, `route.snapshot`, `event.data`...) or in a variable the same file assigns from it (`const params = new URLSearchParams(location.search)`). Values that reach a sink in other ways are reported as medium, to review. Inline suppressions work in JS (`// risk-analyzer-ignore xss-frontend -- sanitised on the server`) and in templates (`<!-- risk-analyzer-ignore xss-frontend -->`).
 
 ## Runtime versions
 
@@ -234,6 +264,11 @@ $token = md5(uniqid()); // risk-analyzer-ignore insecure-randomness -- cache-bus
 ```blade
 {{-- risk-analyzer-ignore xss-blade -- sanitised with HTMLPurifier in the model --}}
 {!! $post->body_html !!}
+```
+
+```jsx
+{/* risk-analyzer-ignore xss-frontend -- HTML is sanitised by the API */}
+<div dangerouslySetInnerHTML={{ __html: post.bodyHtml }} />
 ```
 
 `risk-analyzer-ignore` with no rule id ignores every rule on that line. Put the reason after `--`.
@@ -362,7 +397,7 @@ RiskAnalyzer::extend(NoRawHtmlMail::class);
 
 ## Limits
 
-Risk Analyzer is a static scanner with intra-procedural taint tracking. It follows input within a function, not across method calls or class properties, so treat a clean scan as "no known patterns found", not as proof of safety. It complements code review, dependency updates and a web application firewall; it doesn't replace them.
+Risk Analyzer is a static scanner with intra-procedural taint tracking. It follows input within a function, not across method calls or class properties. The frontend rules match patterns in JavaScript, TypeScript and templates rather than parsing them. So treat a clean scan as "no known patterns found", not as proof of safety. It complements code review, dependency updates and a web application firewall; it doesn't replace them.
 
 ## Testing
 

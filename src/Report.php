@@ -12,12 +12,14 @@ final class Report implements JsonSerializable
     /**
      * @param  list<Finding>  $findings  sorted by severity, then location
      * @param  array<string, Rule>  $rules  rules that ran, by id
+     * @param  list<string>  $frontend  frontend folders that were scanned
      */
     public function __construct(
         public readonly array $findings,
         public readonly array $rules,
         public readonly float $duration,
         public readonly bool $production,
+        public readonly array $frontend = [],
     ) {}
 
     /**
@@ -98,6 +100,7 @@ final class Report implements JsonSerializable
             'tool' => 'siberfx/laravel-risk-analyzer',
             'production' => $this->production,
             'duration' => round($this->duration, 3),
+            'frontend' => $this->frontend,
             'summary' => [
                 ...$this->counts(),
                 'baselined' => $this->baselined()->count(),
