@@ -2,7 +2,7 @@
 
 All notable changes to this package are documented here.
 
-## [2.6.0] - 2026-10-25
+## [2.6.1] - 2026-10-25
 
 ### Added
 - A `frontend` rule category for React, Vue and Angular code: `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.vue` and Angular `.html` templates in `frontend.paths` (default `resources/js`, `resources/ts`). `node_modules`, build output, tests, minified bundles and type declarations are skipped.
