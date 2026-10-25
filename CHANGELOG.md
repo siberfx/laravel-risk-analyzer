@@ -2,6 +2,17 @@
 
 All notable changes to this package are documented here.
 
+## [2.7.1] - 2026-10-25
+
+### Changed
+- `--frontend` now limits the scan to the frontend: the frontend rules plus `vulnerable-dependency` for the frontend's JavaScript lockfiles (those inside the frontend folders, or the root lockfile for folders inside the project without one, such as `resources/js`). PHP, configuration, Composer and filesystem rules no longer run with it. It also works without folders: `--frontend` alone scans `frontend.paths`.
+- `--only` and `--skip` narrow a scoped scan; an `--only` that matches nothing in the scope is an error.
+- `scan(frontend: [...])` from code follows the same rules: `null` is a full scan, `[]` the frontend in its configured folders.
+
+### Added
+- `--infrastructure` for `risk-analyzer:scan` and `risk-analyzer:baseline`: only the Docker, compose, script and GitHub Actions rules, plus `unsupported-runtime` for versions pinned in those files. `--infrastructure=deploy` (repeatable) searches those folders instead of `infrastructure.paths`; a missing folder is an error. With `--frontend` both scopes run.
+- The console header lists the infrastructure folders searched, and JSON reports have an `infrastructure` key.
+
 ## [2.7.0] - 2026-10-25
 
 ### Added
