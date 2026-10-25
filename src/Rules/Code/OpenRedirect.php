@@ -22,7 +22,7 @@ final class OpenRedirect extends AbstractCodeRule
 
     public function description(): string
     {
-        return 'Redirects (redirect(), redirect()->to()/away(), Redirect::to(), header("Location: ...")) whose target comes from request input.';
+        return 'Redirects whose target comes from request input: Laravel redirect(), redirect()->to()/away(), Redirect::to(); Symfony new RedirectResponse() and $this->redirect(); Yii2 $this->redirect() and Yii::$app->response->redirect(); header("Location: ...").';
     }
 
     public function severity(): Severity
@@ -39,6 +39,9 @@ final class OpenRedirect extends AbstractCodeRule
                 && in_array(Ast::methodName($node), ['to', 'away'], true) => Ast::arg($node, 0, 'path'),
             $node instanceof Expr\MethodCall && in_array(Ast::methodName($node), ['to', 'away', 'redirectto'], true)
                 && $this->isRedirector($node->var) => Ast::arg($node, 0, 'path'),
+            // Symfony: new RedirectResponse($url); Symfony/Yii2 controllers: $this->redirect($url); Yii2: Yii::$app->response->redirect($url)
+            $node instanceof Expr\New_ && in_array(Ast::className($node), ['RedirectResponse', 'TrustedRedirectResponse'], true) => Ast::arg($node, 0, 'url'),
+            $node instanceof Expr\MethodCall && Ast::methodName($node) === 'redirect' && $this->isControllerOrResponse($node->var) => Ast::arg($node, 0, 'url'),
             default => null,
         };
 
@@ -54,8 +57,15 @@ final class OpenRedirect extends AbstractCodeRule
     private function isCurrentUrl(Expr $target, FileScope $file): bool
     {
         return ($target instanceof Expr\MethodCall || $target instanceof Expr\NullsafeMethodCall)
-            && in_array(Ast::methodName($target), ['fullurl', 'url', 'path', 'fullurlwithquery', 'fullurlwithoutquery'], true)
+            && in_array(Ast::methodName($target), ['fullurl', 'url', 'path', 'fullurlwithquery', 'fullurlwithoutquery', 'geturi', 'geturl', 'getpathinfo'], true)
             && $file->taint->isRequest($target->var);
+    }
+
+    private function isControllerOrResponse(Expr $node): bool
+    {
+        return ($node instanceof Expr\Variable && $node->name === 'this')
+            || Ast::targetName($node) === 'response'
+            || Ast::methodName($node) === 'getresponse';
     }
 
     private function isRedirector(Expr $node): bool

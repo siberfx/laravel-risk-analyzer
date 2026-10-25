@@ -25,6 +25,8 @@ final class Taint
         'all', 'collect', 'cookie', 'except', 'fullurl', 'fullurlwithquery', 'get', 'getcontent', 'getpayload',
         'getrequesturi', 'header', 'input', 'json', 'keys', 'only', 'path', 'post', 'query', 'route', 'safe',
         'segment', 'segments', 'server', 'str', 'string', 'url', 'useragent', 'validated', 'host', 'gethost',
+        // Symfony and Yii2
+        'toarray', 'getbodyparam', 'getbodyparams', 'getqueryparam', 'getqueryparams', 'getrawbody', 'geturl', 'getheaders', 'getcookies',
     ];
 
     /** Methods that hand back user input whatever object they are called on. */
@@ -221,6 +223,8 @@ final class Taint
             $node instanceof Expr\FuncCall => Ast::functionName($node) === 'request' && $node->getArgs() === [],
             $node instanceof Expr\PropertyFetch => $node->name instanceof Node\Identifier && $node->name->toString() === 'request',
             $node instanceof Expr\StaticCall => Ast::className($node) === 'Request' && Ast::methodName($node) === 'instance',
+            // Yii::$app->getRequest(), Symfony $requestStack->getCurrentRequest() / getMainRequest()
+            $node instanceof Expr\MethodCall => in_array(Ast::methodName($node), ['getrequest', 'getcurrentrequest', 'getmainrequest'], true),
             default => false,
         };
     }

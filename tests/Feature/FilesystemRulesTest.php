@@ -62,3 +62,40 @@ it('only reports committed .npmrc files that hold a token', function () {
 
     expect($files)->toBe(['web/.npmrc']);
 });
+
+it('skips templates, committed dependencies and public certificates', function () {
+    $root = $this->project([
+        '.env.production.example' => 'APP_KEY=',
+        'docker/.env.dev.local.example' => 'DB_PASSWORD=',
+        'vendor/acme/sdk/cacert.pem' => "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n",
+        'certs/ca.pem' => "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n",
+        'certs/server.key' => "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n",
+    ]);
+
+    foreach ([['git', 'init', '-q'], ['git', 'add', '-f', '.']] as $command) {
+        (new Process($command, $root))->mustRun();
+    }
+
+    $files = collect(app(RiskAnalyzer::class)->scan(only: ['secrets-in-git'], baseline: false, basePath: $root)->findings)->pluck('file')->all();
+
+    expect($files)->toBe(['certs/server.key']);
+});
+
+it('only reports Symfony env files that hold a real secret', function () {
+    $root = $this->project([
+        'composer.json' => json_encode(['require' => ['symfony/framework-bundle' => '^7.4']]),
+        '.env' => "APP_ENV=dev\nAPP_SECRET=\nDATABASE_URL=\"postgresql://app:!ChangeMe!@127.0.0.1:5432/app\"\n",
+        '.env.dev' => "APP_SECRET=4f9c1b7e2d8a6f3c5e0b9d7a1c3e5f7a\n",
+        '.env.prod' => "MAILER_DSN=smtp://mailer:Xk9vQ2mLp7Rt4Wz8@smtp.example.com:587\n",
+        '.env.local' => "APP_SECRET=x\n",
+    ]);
+
+    foreach ([['git', 'init', '-q'], ['git', 'add', '-f', '.']] as $command) {
+        (new Process($command, $root))->mustRun();
+    }
+
+    $findings = collect(app(RiskAnalyzer::class)->scan(only: ['secrets-in-git'], baseline: false, basePath: $root)->findings)
+        ->mapWithKeys(fn ($finding) => [$finding->file => $finding->severity->value])->all();
+
+    expect($findings)->toBe(['.env.local' => 'critical', '.env.prod' => 'medium', '.env.dev' => 'low']);
+});

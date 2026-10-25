@@ -17,9 +17,11 @@ DB::select("select * from {$this->table()}");          // runtime value, not inp
 DB::select('select * from users where id = ?', [$id]); // bindings                       → not reported
 ```
 
+It also runs **without Laravel**, on Symfony, Yii2 and plain PHP projects or a frontend or deploy repository, with `vendor/bin/risk-analyzer`. See [Without Laravel](#without-laravel-symfony-yii2-plain-php).
+
 Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
-- 46 rules across code, frontend code, Docker/CI/scripts, configuration and routes, dependencies and filesystem
+- 48 rules across code, frontend code, Docker/CI/scripts, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
 - Severity reflects reachability: user input reaching a sink ranks higher than a runtime value
 - Inline suppressions with reasons: `// risk-analyzer-ignore sql-injection -- table name comes from an enum`
@@ -30,6 +32,7 @@ Runtime rules check the **booted application** instead of reading `.env` files. 
 - Dockerfile, Docker Compose, shell script, Makefile and GitHub Actions checks
 - Console, JSON, **SARIF** (GitHub code scanning) and Markdown (PR comments / job summaries) output
 - A `Report::assertClean()` helper to run the scan inside your own test suite
+- A standalone `vendor/bin/risk-analyzer` and `Standalone::scan()` for Symfony, Yii2 and plain PHP
 - Custom rules: an AST rule takes about 15 lines
 
 ## Requirements
@@ -38,6 +41,8 @@ Runtime rules check the **booted application** instead of reading `.env` files. 
 | ------- | ---------- |
 | PHP     | 8.4, 8.5   |
 | Laravel | 12.x, 13.x |
+
+These are the requirements for running the scanner. Without Laravel it can scan projects on any framework and any PHP version; see [Without Laravel](#without-laravel-symfony-yii2-plain-php).
 
 ## Installation
 
@@ -51,6 +56,39 @@ Publish the config if you want to change paths, thresholds or rules:
 ```bash
 php artisan vendor:publish --tag=risk-analyzer-config
 ```
+
+## Without Laravel (Symfony, Yii2, plain PHP)
+
+`vendor/bin/risk-analyzer` scans a project without booting Laravel:
+
+```bash
+composer require --dev siberfx/laravel-risk-analyzer      # when the project's dependencies allow it
+vendor/bin/risk-analyzer scan
+
+composer global require siberfx/laravel-risk-analyzer     # otherwise: install it once, outside the project
+risk-analyzer scan --project=/path/to/project
+```
+
+It has the `scan`, `baseline` and `rules` commands with the same options as the artisan commands, plus `--project` (default: the current directory) and `--config`. The scanner needs PHP 8.4+, but the project it scans can target any PHP version.
+
+All rules run except the configuration & route rules, which need a booted Laravel app. The PHP rules recognise input and dangerous calls in Symfony (`Request`, Doctrine DBAL/DQL/QueryBuilder, `RedirectResponse`, Twig `|raw`), Yii2 (`Yii::$app->request`, `createCommand`, `findBySql`, string `where()`, `redirect()`, views) and plain PHP (`$_GET`/`$_POST`, PDO, mysqli, `echo`). Without a config file the whole project is scanned, minus `vendor`, `var`, `runtime`, `web/assets`, `node_modules`, tests and caches. Put a `risk-analyzer.php` (or `config/risk-analyzer.php`) in the project to change that; it has the same format as the Laravel config.
+
+From PHPUnit or Pest:
+
+```php
+use Siberfx\RiskAnalyzer\Standalone;
+
+public function test_no_security_findings(): void
+{
+    Standalone::scan(__DIR__.'/..', offline: true)->assertClean('high');
+}
+```
+
+Guides per framework, with install, config, CI and what is checked:
+
+- [Symfony](docs/symfony.md)
+- [Yii2](docs/yii2.md)
+- [Plain PHP](docs/plain-php.md)
 
 ### Keeping a published config up to date
 
@@ -101,7 +139,7 @@ php artisan risk-analyzer:config-sync                  # add new package options
 Sample output:
 
 ```
-  RISK ANALYZER  46 rules · production profile · 1.84s
+  RISK ANALYZER  48 rules · production profile · 1.84s
 
   CRITICAL sql-injection  app/Http/Controllers/ReportController.php:22
            Request input flows into raw SQL passed to DB::select().
@@ -125,16 +163,18 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 | Rule | Looks for |
 | --- | --- |
-| `sql-injection` | Raw SQL (`DB::select`, `DB::raw`, `whereRaw`, `orderByRaw`...) built from input or runtime strings; user-chosen `orderBy`/`groupBy`/`DB::table` identifiers |
+| `sql-injection` | Raw SQL built from input or runtime strings: Laravel (`DB::select`, `DB::raw`, `whereRaw`, `orderByRaw`...), PDO/mysqli/`pg_query`, Doctrine (`executeQuery`, `fetchAllAssociative`, `createQuery`, QueryBuilder `where("… " . $x)`), Yii2 (`createCommand`, `findBySql`, string `where()`); user-chosen `orderBy`/`groupBy`/`DB::table` identifiers |
 | `command-injection` | `exec`, `shell_exec`, `system`, backticks, string-form `Process::run()` built from input |
 | `code-execution` | `eval`, `include` of input, `call_user_func($request->...)`, `$fn()` |
 | `insecure-deserialization` | `unserialize()` of input, or without `allowed_classes` |
 | `path-traversal` | File functions, `Storage`/`File`, `response()->download()`, `storeAs()` with input paths or client file names |
 | `ssrf` | `Http::get()`, Guzzle, curl, `get_headers` with input URLs |
-| `open-redirect` | `redirect()`, `->away()`, `Redirect::to()`, `Location:` headers with input targets |
+| `open-redirect` | `redirect()`, `->away()`, `Redirect::to()`, Symfony `RedirectResponse`/`$this->redirect()`, Yii2 `redirect()`, `Location:` headers with input targets |
 | `xxe` | `LIBXML_NOENT`/`LIBXML_DTDLOAD`, `substituteEntities`, re-enabled entity loader |
 | `mass-assignment` | `create($request->all())`, `forceFill(...)` of input, empty `$guarded`, `#[Unguarded]`, `Model::unguard()` |
 | `xss-blade` | `{!! !!}` echoes: input printed raw (high), other raw output to review (low) |
+| `xss-echo` | `echo`, `print` and `<?= ?>` of request input without `htmlspecialchars()`/`Html::encode()` (plain PHP pages, Yii2 views) |
+| `xss-twig` | Twig `{{ …\|raw }}` in Laravel apps using TwigBridge (`resources/views/*.twig`) and Symfony: request data such as `request('q')`, `old()`, `app.request.query` (high), other raw output (low); `{% autoescape false %}` (medium) |
 | `hardcoded-secret` | Provider token formats (AWS, Stripe, GitHub, Slack, OpenAI, Anthropic...), private keys, literal passwords, secret `env()` fallbacks |
 | `weak-cryptography` | `md5`/`sha1` of passwords, ECB/DES/RC4, mcrypt, `==` on signatures |
 | `insecure-randomness` | Tokens, OTPs and passwords made with `rand`, `mt_rand`, `uniqid`, `str_shuffle` |
@@ -194,7 +234,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | Rule | Looks for |
 | --- | --- |
 | `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/`, and PHP files, dumps, keys, logs and `.htaccess` in folders linked into it (`storage:link`); built source maps (`*.js.map`, low) |
-| `secrets-in-git` | `.env`, OAuth keys, `auth.json`, private keys **committed to git** (asks `git ls-files`) |
+| `secrets-in-git` | `.env`, OAuth keys, `auth.json`, private keys **committed to git** (asks `git ls-files`). Symfony's committed `.env`/`.env.<env>` only when they hold a real secret |
 | `file-permissions` | `.env`, `auth.json` and the Passport key readable or writable by every user, `storage/` and `bootstrap/cache` set to 777 (not on Windows) |
 
 ## Frontend code
@@ -399,6 +439,8 @@ it('has no security findings', function () {
     RiskAnalyzer::scan(only: ['code', 'runtime'], offline: true)->assertClean('high');
 });
 ```
+
+Outside Laravel, use `Standalone::scan()` instead of the facade; see [Without Laravel](#without-laravel-symfony-yii2-plain-php).
 
 ## Writing your own rules
 

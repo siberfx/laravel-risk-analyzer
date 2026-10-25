@@ -2,6 +2,7 @@
 
 namespace Siberfx\RiskAnalyzer\Support;
 
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Redis\RedisManager;
 use PDO;
 use Siberfx\RiskAnalyzer\ScanContext;
@@ -123,6 +124,11 @@ final class ServiceVersions
      */
     private static function redis(ScanContext $context): ?array
     {
+        // Redis connections are built from a Laravel app's config (never the case standalone).
+        if (! $context->app instanceof Application) {
+            return null;
+        }
+
         $settings = $context->settings();
         $cacheStore = (string) $settings->get('cache.default');
         $queue = (string) $settings->get('queue.default');

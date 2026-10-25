@@ -2,7 +2,9 @@
 
 namespace Siberfx\RiskAnalyzer;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Arr;
 use InvalidArgumentException;
 use Siberfx\RiskAnalyzer\Code\Analyzer;
 use Siberfx\RiskAnalyzer\Contracts\CodeRule;
@@ -30,6 +32,8 @@ final class RiskAnalyzer
         Code\XmlExternalEntities::class,
         Code\MassAssignment::class,
         Code\UnescapedBladeOutput::class,
+        Code\UnescapedEcho::class,
+        Code\UnescapedTwigOutput::class,
         Code\HardcodedSecret::class,
         Code\WeakCryptography::class,
         Code\InsecureRandomness::class,
@@ -75,9 +79,35 @@ final class RiskAnalyzer
      * @param  array<string, mixed>  $config
      */
     public function __construct(
-        private readonly Application $app,
+        private readonly Container $app,
         private readonly array $config,
+        /** The project to scan when $app is not a Laravel application (standalone use). */
+        private readonly ?string $basePath = null,
     ) {}
+
+    /**
+     * Whether the scan runs inside a booted Laravel application. Without one
+     * (Symfony, Yii2, plain PHP...) the configuration & route rules are skipped.
+     */
+    public function isLaravel(): bool
+    {
+        return $this->app instanceof Application;
+    }
+
+    /**
+     * A value from the "risk-analyzer" config this analyzer runs with.
+     */
+    public function config(string $key, mixed $default = null): mixed
+    {
+        return Arr::get($this->config, $key, $default);
+    }
+
+    public function basePath(string $path = ''): string
+    {
+        $base = rtrim(str_replace('\\', '/', $this->basePath ?? ($this->app instanceof Application ? $this->app->basePath() : (string) getcwd())), '/');
+
+        return $path === '' ? $base : $base.'/'.ltrim($path, '/');
+    }
 
     /**
      * Register an extra rule at runtime (e.g. from a service provider).
@@ -104,7 +134,8 @@ final class RiskAnalyzer
         foreach ([...self::BUILT_IN, ...(array) ($this->config['rules']['extra'] ?? []), ...$this->extensions] as $rule) {
             $rule = $this->resolve($rule);
 
-            if (! in_array($rule->id(), $disabled, true)) {
+            // Runtime rules read the booted app's config, routes and kernel.
+            if (! in_array($rule->id(), $disabled, true) && ($this->isLaravel() || $rule->category() !== Category::Runtime)) {
                 $rules[$rule->id()] = $rule;
             }
         }
@@ -134,10 +165,10 @@ final class RiskAnalyzer
         ?array $infrastructure = null,
     ): Report {
         $started = microtime(true);
-        $production ??= $this->app->environment((array) ($this->config['production_environments'] ?? ['production']));
+        $production ??= $this->app instanceof Application && $this->app->environment((array) ($this->config['production_environments'] ?? ['production']));
 
         $scopes = array_keys(array_filter(['frontend' => $frontend, 'infrastructure' => $infrastructure], fn (?array $folders) => $folders !== null));
-        $context = new ScanContext($this->app, $basePath ?? $this->app->basePath(), $this->config, $production, $offline, $files,
+        $context = new ScanContext($this->app, $basePath ?? $this->basePath(), $this->config, $production, $offline, $files,
             $frontend ?: null, $infrastructure ?: null, $scopes);
 
         foreach (['Frontend' => $frontend, 'Infrastructure' => $infrastructure] as $label => $folders) {
@@ -188,8 +219,10 @@ final class RiskAnalyzer
             ? array_values(array_filter($context->infrastructureRoots(), fn (string $root) => is_dir($context->basePath($root))))
             : [];
 
-        return new Report($findings, $rules, microtime(true) - $started, $production, $scannedFrontend,
-            array_map(fn (string $root) => $root === '' ? '.' : $root, $scannedInfrastructure));
+        $label = fn (string $root) => $root === '' ? '.' : $root;
+
+        return new Report($findings, $rules, microtime(true) - $started, $production,
+            array_map($label, $scannedFrontend), array_map($label, $scannedInfrastructure));
     }
 
     /**
@@ -220,7 +253,7 @@ final class RiskAnalyzer
             return $path;
         }
 
-        return $context?->basePath($path) ?? $this->app->basePath($path);
+        return $context?->basePath($path) ?? $this->basePath($path);
     }
 
     /**

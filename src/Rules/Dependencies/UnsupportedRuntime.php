@@ -5,6 +5,7 @@ namespace Siberfx\RiskAnalyzer\Rules\Dependencies;
 use Closure;
 use Composer\Semver\VersionParser;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Support\Carbon;
 use Siberfx\RiskAnalyzer\Category;
@@ -14,6 +15,7 @@ use Siberfx\RiskAnalyzer\Rules\AbstractProjectRule;
 use Siberfx\RiskAnalyzer\ScanContext;
 use Siberfx\RiskAnalyzer\Severity;
 use Siberfx\RiskAnalyzer\Support\EndOfLifeClient;
+use Siberfx\RiskAnalyzer\Support\Lockfiles;
 use Siberfx\RiskAnalyzer\Support\NodeVersions;
 use Siberfx\RiskAnalyzer\Support\ServiceVersions;
 use Throwable;
@@ -28,6 +30,12 @@ final class UnsupportedRuntime extends AbstractProjectRule
 
     public const array LARAVEL = [
         '9' => '2024-02-06', '10' => '2025-02-04', '11' => '2026-03-12', '12' => '2027-02-24', '13' => '2028-03-17',
+    ];
+
+    public const array SYMFONY = [
+        '4.4' => '2023-11-30', '5.4' => '2029-02-28', '6.0' => '2023-01-31', '6.1' => '2023-01-31', '6.2' => '2023-07-31',
+        '6.3' => '2024-01-31', '6.4' => '2027-11-30', '7.0' => '2024-07-31', '7.1' => '2025-01-31', '7.2' => '2025-07-31',
+        '7.3' => '2026-01-31', '7.4' => '2029-11-30', '8.0' => '2026-07-31',
     ];
 
     public const array NODE = [
@@ -67,7 +75,7 @@ final class UnsupportedRuntime extends AbstractProjectRule
 
     public function description(): string
     {
-        return 'PHP, Laravel and Node.js versions past their security-support date (or within 90 days of it): the running PHP and its patch level, the composer.json PHP constraint, PHP base images in Dockerfiles and compose files, and Node versions pinned in .nvmrc, package.json, Dockerfiles, compose files and GitHub Actions, and in production the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses. Dates come from endoflife.date and php.net (cached), with built-in tables offline.';
+        return 'PHP, Laravel, Symfony and Node.js versions past their security-support date (or within 90 days of it): the running PHP and its patch level, the composer.json PHP constraint, PHP base images in Dockerfiles and compose files, and Node versions pinned in .nvmrc, package.json, Dockerfiles, compose files and GitHub Actions, and in production the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses. Dates come from endoflife.date and php.net (cached), with built-in tables offline.';
     }
 
     public function category(): Category
@@ -85,14 +93,23 @@ final class UnsupportedRuntime extends AbstractProjectRule
         $this->client = $context->offline ? null : $this->client($context);
 
         $php = PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;
-        $laravel = explode('.', $context->app->version())[0];
+        // Outside a Laravel app (standalone scans) framework versions come from composer.lock.
+        $laravel = $context->app instanceof Application ? explode('.', $context->app->version())[0] : $this->locked($context, ['laravel/framework'], 1);
+        // Laravel also locks Symfony components; only a Symfony app has the framework bundle.
+        $symfony = $this->locked($context, ['symfony/framework-bundle'], 2);
         $phpDates = $this->dates('php', self::PHP);
         // An --infrastructure scan only looks at versions pinned in Docker, compose and CI files.
         $pinsOnly = $context->isScoped();
 
         if (! $pinsOnly) {
             yield from $this->check("PHP {$php}", $phpDates[$php] ?? null, 'php');
-            yield from $this->check("Laravel {$laravel}", $this->dates('laravel', self::LARAVEL)[$laravel] ?? null, 'laravel');
+            if ($laravel !== null) {
+                yield from $this->check("Laravel {$laravel}", $this->dates('laravel', self::LARAVEL)[$laravel] ?? null, 'laravel', $context->isLaravel() ? null : 'composer.lock');
+            }
+
+            if ($symfony !== null) {
+                yield from $this->check("Symfony {$symfony}", $this->dates('symfony', self::SYMFONY)[$symfony] ?? null, 'symfony', 'composer.lock');
+            }
             yield from $this->patchLevel($php, $phpDates[$php] ?? null);
             yield from $this->composerConstraint($context, $phpDates);
         }
@@ -123,7 +140,7 @@ final class UnsupportedRuntime extends AbstractProjectRule
             }
         }
 
-        if (! $pinsOnly && $context->production && $context->config('runtime.services', true)) {
+        if (! $pinsOnly && $context->isLaravel() && $context->production && $context->config('runtime.services', true)) {
             foreach ($this->services !== null ? ($this->services)($context) : ServiceVersions::detect($context) as $service) {
                 $cycle = ServiceVersions::cycle($service['product'], $service['version']);
                 $end = $cycle === null ? null : ($this->dates($service['product'], self::SERVICES[$service['product']] ?? [])[$cycle] ?? null);
@@ -211,6 +228,23 @@ final class UnsupportedRuntime extends AbstractProjectRule
                 'Raise the lower bound to a supported PHP version so the app cannot be installed on an unsupported one.',
                 'composer.json', anchor: 'composer.'.$key, meta: ['constraint' => $constraint, 'branch' => $branch]);
         }
+    }
+
+    /**
+     * The release cycle of the first of $packages in composer.lock: its
+     * major ($parts = 1) or major.minor ($parts = 2) version.
+     *
+     * @param  list<string>  $packages
+     */
+    private function locked(ScanContext $context, array $packages, int $parts): ?string
+    {
+        foreach (Lockfiles::composer($context) as $package) {
+            if (in_array($package['name'], $packages, true) && preg_match('/^\d+(\.\d+)*/', $package['version'], $match)) {
+                return implode('.', array_slice(explode('.', $match[0]), 0, $parts));
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -26,7 +26,7 @@ abstract class AbstractFrontendRule extends AbstractProjectRule
         foreach ($context->frontendFiles() as $path) {
             $source = $context->read($path);
 
-            if ($source === null) {
+            if ($source === null || self::isThirdPartyOrBuilt($path, $source)) {
                 continue;
             }
 
@@ -38,6 +38,19 @@ abstract class AbstractFrontendRule extends AbstractProjectRule
                 }
             }
         }
+    }
+
+    /**
+     * Vendored libraries and build output, which are not the project's code:
+     * license banners (/*! ... or @license), bundles and chunks, minified lines.
+     */
+    public static function isThirdPartyOrBuilt(string $path, string $source): bool
+    {
+        if (preg_match('/\.(bundle|chunk)\.[cm]?js$/', $path) || preg_match('#/\*!|@license\b#', substr($source, 0, 600))) {
+            return true;
+        }
+
+        return array_any(preg_split('/\R/', $source, 200) ?: [], fn (string $line) => strlen($line) > 2000);
     }
 
     /**

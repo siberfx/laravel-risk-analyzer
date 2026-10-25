@@ -267,3 +267,15 @@ it('takes --frontend on the scan command and names the folders', function () {
 
     $this->artisan('risk-analyzer:baseline', ['--frontend' => ['nope'], '--offline' => true])->assertExitCode(2);
 });
+
+it('skips vendored libraries and build output', function () {
+    $findings = scanFrontend($this->project([
+        'resources/js/lib/jquery.mobile.js' => "/*! jQuery Mobile v1.4.5 | jquery.org/license */\neval(location.hash);\n",
+        'resources/js/vendor-licensed.js' => "/**\n * @license MIT\n */\neval(location.hash);\n",
+        'resources/js/app.bundle.js' => "eval(location.hash);\n",
+        'resources/js/minified.js' => str_repeat('var a=1;', 400)."\neval(location.hash);\n",
+        'resources/js/app.js' => "eval(location.hash);\n",
+    ]))->findings;
+
+    expect(collect($findings)->pluck('file')->unique()->values()->all())->toBe(['resources/js/app.js']);
+});

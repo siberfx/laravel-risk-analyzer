@@ -58,9 +58,9 @@ final class ScanCommand extends Command
         }
 
         try {
-            $threshold = Severity::fromLoose($this->stringOption('fail-on') ?? (string) config('risk-analyzer.fail_on', 'high'));
+            $threshold = Severity::fromLoose($this->stringOption('fail-on') ?? (string) $riskAnalyzer->config('fail_on', 'high'));
             // --changed alone (empty) means uncommitted changes, like no ref.
-            $files = $this->option('changed') !== null ? ChangedFiles::since(base_path(), $this->stringOption('changed')) : null;
+            $files = $this->option('changed') !== null ? ChangedFiles::since($riskAnalyzer->basePath(), $this->stringOption('changed')) : null;
 
             $report = $riskAnalyzer->scan(
                 only: $this->listOption('only'),

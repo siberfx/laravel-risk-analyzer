@@ -47,7 +47,8 @@ final class Secrets
      */
     public static function looksReal(string $value, array $allow = []): bool
     {
-        if (strlen($value) < 8 || preg_match(self::PLACEHOLDER, $value) || in_array($value, $allow, true)) {
+        // "!ChangeMe!" is Symfony's default DATABASE_URL password.
+        if (strlen($value) < 8 || preg_match(self::PLACEHOLDER, $value) || in_array($value, $allow, true) || preg_match('/change[-_]?me/i', $value)) {
             return false;
         }
 

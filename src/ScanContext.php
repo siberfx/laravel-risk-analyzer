@@ -3,6 +3,7 @@
 namespace Siberfx\RiskAnalyzer;
 
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
@@ -30,7 +31,7 @@ final class ScanContext
      * @param  list<string>  $scopes  'frontend' and/or 'infrastructure' when the scan is limited to them; empty for a full scan
      */
     public function __construct(
-        public readonly Application $app,
+        public readonly Container $app,
         string $basePath,
         public readonly array $config,
         public readonly bool $production = false,
@@ -41,6 +42,15 @@ final class ScanContext
         public readonly array $scopes = [],
     ) {
         $this->basePath = rtrim(str_replace('\\', '/', $basePath), '/');
+    }
+
+    /**
+     * Whether the scan runs inside a booted Laravel application rather than
+     * standalone (vendor/bin/risk-analyzer, Standalone::scan()).
+     */
+    public function isLaravel(): bool
+    {
+        return $this->app instanceof Application;
     }
 
     public function basePath(string $path = ''): string
@@ -124,7 +134,7 @@ final class ScanContext
     public function files(array $suffixes): iterable
     {
         yield from $this->walk(
-            (array) $this->config('paths', []),
+            $this->roots((array) $this->config('paths', [])),
             (array) $this->config('exclude', []),
             fn (string $relative) => $this->matchesSuffix($relative, $suffixes),
         );

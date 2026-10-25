@@ -1,0 +1,64 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * Risk Analyzer without Laravel: scans Symfony, Yii2, plain PHP, frontend and
+ * infrastructure projects. Inside a Laravel app, use php artisan risk-analyzer:scan.
+ */
+
+use Composer\InstalledVersions;
+use Illuminate\Container\Container;
+use Siberfx\RiskAnalyzer\Console\BaselineCommand;
+use Siberfx\RiskAnalyzer\Console\RulesCommand;
+use Siberfx\RiskAnalyzer\Console\ScanCommand;
+use Siberfx\RiskAnalyzer\Standalone;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\ArgvInput;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\ConsoleOutput;
+
+foreach ([$GLOBALS['_composer_autoload_path'] ?? null, __DIR__.'/../vendor/autoload.php', __DIR__.'/../../../autoload.php'] as $autoload) {
+    if (is_string($autoload) && is_file($autoload)) {
+        require $autoload;
+
+        break;
+    }
+}
+
+if (! class_exists(Standalone::class)) {
+    fwrite(STDERR, "Risk Analyzer: run composer install first.\n");
+
+    exit(1);
+}
+
+$input = new ArgvInput;
+$path = $input->getParameterOption('--project', getcwd(), true);
+$config = $input->getParameterOption('--config', null, true);
+
+try {
+    $container = Standalone::container(is_string($path) ? $path : '.', is_string($config) ? $config : null);
+} catch (InvalidArgumentException $exception) {
+    fwrite(STDERR, $exception->getMessage()."\n");
+
+    exit(2);
+}
+
+Container::setInstance($container);
+
+$version = class_exists(InstalledVersions::class) && InstalledVersions::isInstalled('siberfx/laravel-risk-analyzer')
+    ? (string) InstalledVersions::getPrettyVersion('siberfx/laravel-risk-analyzer')
+    : 'dev';
+$application = new Application('Risk Analyzer', $version);
+
+foreach (['scan' => ScanCommand::class, 'baseline' => BaselineCommand::class, 'rules' => RulesCommand::class] as $name => $class) {
+    $command = new $class;
+    $command->setLaravel($container);
+    $command->setName($name);
+    $command->setAliases(['risk-analyzer:'.$name]);
+    $command->getDefinition()->addOption(new InputOption('project', null, InputOption::VALUE_REQUIRED, 'Project folder to scan (default: the current directory)'));
+    $command->getDefinition()->addOption(new InputOption('config', null, InputOption::VALUE_REQUIRED, 'Config file (default: risk-analyzer.php or config/risk-analyzer.php in the project)'));
+    // Symfony Console 7.4+ has addCommand(); 8.0 dropped add().
+    method_exists($application, 'addCommand') ? $application->addCommand($command) : $application->add($command);
+}
+
+exit($application->run($input, new ConsoleOutput));
