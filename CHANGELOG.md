@@ -2,6 +2,30 @@
 
 All notable changes to this package are documented here.
 
+## [2.7.2] - 2026-10-25
+
+### Added
+- Standalone mode for projects that are not Laravel apps (Symfony, Yii2, plain PHP, or a frontend or deploy repository):
+  - `vendor/bin/risk-analyzer` has `scan`, `baseline` and `rules` with the artisan options, plus `--project` (default: the current directory) and `--config`.
+  - Install it per project or globally with `composer global require`. The scanned project can target any PHP version.
+  - All rules run except the configuration & route rules, which need a booted Laravel app.
+  - Without a config file the whole project is scanned, minus `vendor`, `var`, `runtime`, `web/assets`, `node_modules`, tests and caches. A `risk-analyzer.php` or `config/risk-analyzer.php` in the project (same format as the Laravel config) changes that.
+- `Siberfx\RiskAnalyzer\Standalone::scan($path, ...)` returns a `Report`, for PHPUnit and Pest suites outside Laravel: `Standalone::scan(__DIR__.'/..')->assertClean('high')`.
+- `xss-echo`: `echo`, `print` and `<?= ?>` of request input without escaping (plain PHP pages, Yii2 views).
+- `xss-twig`: Twig `{{ …|raw }}` and `{% autoescape false %}`, in Symfony templates and in Laravel apps using TwigBridge. Request data (`app.request.query`, `request('q')`, `request().input()`, `old()`) printed raw is high; other raw output is low.
+- `sql-injection` covers PDO (`query`, `exec`, `prepare`), mysqli, `pg_query`, `sqlsrv_query` and `oci_parse`; Doctrine DBAL (`executeQuery`, `fetchAllAssociative`...), DQL (`createQuery`, `createNativeQuery`) and QueryBuilder conditions built from input; and Yii2 `createCommand`, `findBySql` and string `where()`/`andWhere()`. SQL with separately bound parameters is only reported when input reaches it.
+- `open-redirect` covers Symfony `new RedirectResponse()` and `$this->redirect()`, and Yii2 `$this->redirect()` and `Yii::$app->response->redirect()`.
+- Input from Yii2 (`Yii::$app->getRequest()`, `getBodyParam()`, `getQueryParam()`, `getRawBody()`) and Symfony (`$request->toArray()`, `RequestStack::getCurrentRequest()`) is tracked.
+- `unsupported-runtime` checks the Symfony version in `composer.lock` (when `symfony/framework-bundle` is installed) and, outside Laravel, the Laravel version from `composer.lock`.
+- Framework guides: [Symfony](docs/symfony.md), [Yii2](docs/yii2.md) and [plain PHP](docs/plain-php.md), linked from the README.
+
+### Changed
+- `secrets-in-git` skips templates (`*.example`, `*.dist`, `*.sample`, `*.template`), committed `vendor/` and `node_modules/` code, and `.pem`/`.key` files without a private key. In Symfony projects, committed `.env` and `.env.<env>` files are only reported when they contain a real-looking secret: low for `.env.dev`/`.env.test`, medium otherwise. `.env.local` stays critical.
+- Frontend rules skip vendored libraries and build output: files with a `/*!` or `@license` banner, `*.bundle.js`/`*.chunk.js`, and minified files.
+- Values containing "changeme" (such as Symfony's `!ChangeMe!`) are treated as placeholders, not secrets.
+- `RiskAnalyzer` accepts any Illuminate container, not only a Laravel application, and has `isLaravel()`, `basePath()` and `config()`.
+- `illuminate/config` and `illuminate/container` are listed as requirements; they were already installed with the other Illuminate packages.
+
 ## [2.7.1] - 2026-10-25
 
 ### Changed
