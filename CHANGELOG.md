@@ -2,6 +2,22 @@
 
 All notable changes to this package are documented here.
 
+## [2.7.0] - 2026-10-25
+
+### Added
+- An `infrastructure` rule category for Dockerfiles, compose files, shell scripts, Makefiles, `Envoy.blade.php` and GitHub Actions workflows, found under `infrastructure.paths` (default: the project root; `vendor`, `node_modules`, `storage`, `public`, `.git` and worktrees are skipped). `#` comments are ignored, and `# risk-analyzer-ignore <rule>` suppresses a line.
+  - `dockerfile-hardening`: secrets in `ENV` (high) or build `ARG`s (medium); `ENV` copying a build value into the image; `COPY .` with no `.dockerignore` (medium) or one that does not exclude an existing `.env` (high); `ADD` of remote URLs without `--checksum`; base images without a tag or on `:latest`; a final stage running as root (low); the shell checks on `RUN` lines.
+  - `compose-hardening`: `privileged: true` and a mounted Docker socket (high); `network_mode: host`, dangerous `cap_add`, unconfined seccomp/AppArmor (medium); literal secrets in `environment:` (high); `MYSQL_ALLOW_EMPTY_PASSWORD`; database, cache, search and queue ports published on every interface (medium in production compose files such as `docker-compose.prod.yml`, low otherwise).
+  - `shell-script-risks`: provider tokens (critical), literal secrets in variables, `mysql -p<password>` and credentials in URLs (high); `curl … | sh`, `chmod 777`, TLS checks turned off, `eval` of a variable (medium); `rm -r "$DIR/"` without `${DIR:?}` (low).
+  - `ci-workflow-risks`: issue and pull request fields (title, body, branch name, commit message...) expanded inside `run:` or `actions/github-script` (high); `pull_request_target` workflows that check out the pull request head (high); `permissions: write-all` (medium); third-party actions not pinned to a commit SHA (low, one finding per workflow); the shell checks on `run:` steps.
+- `unsupported-runtime` checks PHP base images in Dockerfiles and compose files (`php:8.1-fpm`, `serversideup/php:8.2-fpm-nginx`, `bitnami/php-fpm:8.1`...) against PHP's end of support.
+- `infrastructure` config section: `paths` and `exclude`.
+
+### Changed
+- `--changed` limits infrastructure rules to the changed files.
+- Folder walks skip excluded folders (`vendor`, `node_modules`...) instead of listing their files and filtering them out afterwards.
+- `.worktrees` is excluded from the frontend rules.
+
 ## [2.6.1] - 2026-10-25
 
 ### Added
