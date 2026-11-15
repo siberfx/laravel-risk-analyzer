@@ -2,6 +2,20 @@
 
 All notable changes to this package are documented here.
 
+## [2.8.1] - 2026-11-16
+
+### Added
+- `risk-analyzer:ignores` (also `vendor/bin/risk-analyzer ignores`) lists every active ignore with its reason: `routes.ignore` and the other config ignores, `#[RiskAnalyzerIgnore]` on routes, and inline `risk-analyzer-ignore` comments in PHP, Blade, frontend and infrastructure files. Secret values from `secrets.allow` are masked.
+- `--json` prints the list as a snapshot. `--check=<file>` fails only for ignores that are not in the snapshot, so new ignores get reviewed in CI. Removed ignores do not fail the check, and moving code does not either, because ignores are compared by what they cover, not by line number.
+- A commented `routes.ignore` example with reasons in the published config.
+- README: "What the scanner does not read" (Node server code, client-side routers and guards, GraphQL and OpenAPI, authorization inside controllers), the middleware names accepted as protection, and a CI snippet that fails on new ignores.
+
+### Changed
+- `unprotected-route` remediation text says that a React, Vue or Angular router guard does not protect an endpoint, and points at `routes.ignore` for intentionally public routes and SPA shells.
+
+### Notes
+- The class-name check for guards is case-sensitive: a lowercase alias such as `role:admin` does not count as protection. This is documented, not changed.
+
 ## [2.8.0] - 2026-11-16
 
 ### Added
