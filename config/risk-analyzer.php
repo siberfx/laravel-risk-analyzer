@@ -207,6 +207,17 @@ return [
     | 'ignore'              URI or route-name patterns skipped by unprotected-route,
     |                       optionally keyed with a reason: ['admin/oauth/*' => 'SSO'].
     |                       Single routes can use the #[RiskAnalyzerIgnore] attribute.
+    |                       Give every entry a reason; risk-analyzer:ignores lists them.
+    |                       Example, uncomment and adapt:
+    |
+    |   'ignore' => [
+    |       // React admin shell: its API routes are checked separately.
+    |       'admin/{any?}' => 'SPA shell, API protected by auth:sanctum',
+    |       // Entry points that must stay public (OAuth, webhooks from a provider).
+    |       'admin/sso/*' => 'SSO entry points, state checked by Socialite',
+    |       // A route name instead of a URI.
+    |       'admin.preview' => 'read-only preview, signed links only',
+    |   ],
     |
     */
 

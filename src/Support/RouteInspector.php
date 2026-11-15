@@ -44,6 +44,38 @@ final class RouteInspector
     }
 
     /**
+     * Every #[RiskAnalyzerIgnore] that applies to the route: on its closure, controller method or controller class.
+     *
+     * @return list<RiskAnalyzerIgnore>
+     */
+    public static function ignoreAttributes(Route $route): array
+    {
+        $handler = self::handler($route);
+
+        if ($handler === null) {
+            return [];
+        }
+
+        $attributes = $handler->getAttributes(RiskAnalyzerIgnore::class);
+
+        if ($handler instanceof ReflectionMethod && class_exists($controller = Str::before((string) $route->getAction('uses'), '@'))) {
+            array_push($attributes, ...(new ReflectionClass($controller))->getAttributes(RiskAnalyzerIgnore::class));
+        }
+
+        $instances = [];
+
+        foreach ($attributes as $attribute) {
+            try {
+                $instances[] = $attribute->newInstance();
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return $instances;
+    }
+
+    /**
      * #[RiskAnalyzerIgnore] on the route closure, the controller method or the controller class.
      */
     public static function ignores(Route $route, string $rule): bool

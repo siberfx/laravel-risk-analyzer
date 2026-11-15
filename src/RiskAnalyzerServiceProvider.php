@@ -6,6 +6,7 @@ use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Support\ServiceProvider;
 use Siberfx\RiskAnalyzer\Console\BaselineCommand;
 use Siberfx\RiskAnalyzer\Console\ConfigSyncCommand;
+use Siberfx\RiskAnalyzer\Console\IgnoresCommand;
 use Siberfx\RiskAnalyzer\Console\RulesCommand;
 use Siberfx\RiskAnalyzer\Console\ScanCommand;
 use Siberfx\RiskAnalyzer\Support\ConfigMerger;
@@ -42,6 +43,7 @@ final class RiskAnalyzerServiceProvider extends ServiceProvider
             BaselineCommand::class,
             ConfigSyncCommand::class,
             RulesCommand::class,
+            IgnoresCommand::class,
         ]);
     }
 }

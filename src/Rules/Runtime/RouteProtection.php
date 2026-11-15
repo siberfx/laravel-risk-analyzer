@@ -62,7 +62,7 @@ final class RouteProtection extends AbstractProjectRule
                     yield $this->spaShell($context, $route, $routes, $authMiddleware);
                 } else {
                     yield $this->finding("{$route['location']} looks like an admin route but has no authentication middleware.{$this->definedAt($context, $route)}", null,
-                        'Put the route in a group with the auth middleware (and an authorization check such as can:). If it is public on purpose, mark its closure or controller with #[RiskAnalyzerIgnore(\'unprotected-route\', reason: \'...\')].',
+                        'Put the route in a group with the auth middleware and an authorization check (can:, a policy or a gate), on the server. Hiding it in a React, Vue or Angular router guard does not protect the endpoint. If it is public on purpose, mark its closure or controller with #[RiskAnalyzerIgnore(\'unprotected-route\', reason: \'...\')], or add its pattern to routes.ignore in risk-analyzer.php with a reason.',
                         anchor: 'admin.'.$route['location'], meta: ['route' => $route['location']]);
                 }
             }
@@ -124,7 +124,7 @@ final class RouteProtection extends AbstractProjectRule
             $listed = implode(', ', array_slice(array_column($unprotected, 'location'), 0, 3)).(count($unprotected) > 3 ? ', ...' : '');
 
             return $this->finding("{$route['location']} serves a single-page app whose API routes have no authentication: {$listed}.{$where}", null,
-                'Protect the API routes (auth:sanctum or auth, plus an authorization check). The shell route itself can stay public.',
+                'Protect the API routes on the server (auth:sanctum or auth, plus can:, a policy or a gate). The shell route itself can stay public. Once the API is protected, add the shell to routes.ignore in risk-analyzer.php so the finding stops.',
                 anchor: $anchor, meta: $meta);
         }
 

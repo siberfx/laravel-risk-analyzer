@@ -397,6 +397,96 @@ Fingerprints ignore line numbers, so a baselined finding stays baselined when co
 'secrets' => ['allow' => ['sk_test_documented_example']],
 ```
 
+## Reviewing ignores
+
+`risk-analyzer:ignores` lists every active ignore with its reason: `routes.ignore` and the other config ignores, `#[RiskAnalyzerIgnore]` on routes, and inline `risk-analyzer-ignore` comments in PHP, Blade, frontend and infrastructure files.
+
+```bash
+php artisan risk-analyzer:ignores
+```
+
+```text
++--------------+-----------------------------------+-----------------------------------+-------------------------------+
+| Kind         | Where                             | Ignores                           | Reason                        |
++--------------+-----------------------------------+-----------------------------------+-------------------------------+
+| route-config | risk-analyzer.php (routes.ignore) | admin/{any?} · unprotected-route  | SPA shell, API has auth       |
+| inline       | app/Http/Report.php:12            | sql-injection                     | (no reason)                   |
++--------------+-----------------------------------+-----------------------------------+-------------------------------+
+2 active ignore(s), 1 without a reason.
+```
+
+Secret values from `secrets.allow` are masked in the output. Entries without a reason are the ones to fix first.
+
+To stop new ignores slipping in unreviewed, commit a snapshot and check against it in CI:
+
+```bash
+php artisan risk-analyzer:ignores --json > .risk-analyzer-ignores.json
+git add .risk-analyzer-ignores.json
+```
+
+```yaml
+      - name: No unreviewed risk-analyzer ignores
+        run: php artisan risk-analyzer:ignores --check=.risk-analyzer-ignores.json
+```
+
+`--check` fails only for ignores that are not in the snapshot. Removing an ignore does not fail it. The check compares what each ignore covers, not its line number, so moving code does not fail it; but the `where` field in the snapshot does change, so regenerate the file in the same commit as the ignore. Standalone projects can run the same command with `vendor/bin/risk-analyzer ignores`.
+
+## Admin areas and single-page apps
+
+`unprotected-route` flags any route whose path looks like an admin area (`admin_patterns`: admin, dashboard, backoffice, panel, manage). Single-page apps (React, Vue, Angular, Inertia) add a catch-all such as `admin/{any?}` that serves the shell for every admin page, so the scanner also checks the API that shell calls. Four options cover the cases:
+
+```php
+// config/risk-analyzer.php
+'routes' => [
+    // Skip routes by URI or route name. Covers the SPA shell and its API routes too.
+    'ignore' => [
+        'admin/{any?}' => 'React admin shell; its API is checked separately',
+        'admin/api/*'  => 'protected by auth:sanctum and the admin.access gate',
+    ],
+    // [] turns admin detection off completely (sensitive login and OTP checks still run).
+    'admin_patterns' => ['admin', 'dashboard', 'backoffice', 'panel', 'manage'],
+],
+'frontend' => [
+    // Folders of the frontend code that are not scanned.
+    'exclude' => ['node_modules', 'dist', 'resources/js/admin'],
+],
+```
+
+| Stack | What to ignore | How |
+| --- | --- | --- |
+| Laravel routes | an admin route or group | `routes.ignore`, or `#[RiskAnalyzerIgnore('unprotected-route')]` on the closure or controller |
+| React, Vue, Angular, Inertia | the admin shell catch-all | `routes.ignore`; the API it calls should be protected on the server |
+| React, Vue, Angular source | an admin folder | `frontend.exclude`, or `{/* risk-analyzer-ignore xss-frontend -- reason */}` on one line |
+| Node (Express, Nest, Fastify) | not read by the scanner | nothing to ignore here; review its routes with the Node tools you use |
+
+Patterns match the URI (`admin/*`) or the route name (`admin.users.*`) with `Str::is`. Always give a reason: the reason is what someone reviewing the ignore list needs.
+
+### Middleware the scanner accepts as protection
+
+A route counts as protected when its expanded middleware (groups and aliases included) matches one of these:
+
+- **By name, from `routes.auth_middleware`** (default: `auth`, `auth.basic`, `can`, `signed`, `password.confirm`, `verified`). `auth` also matches `auth:sanctum` and `auth:api`, and `can` matches `can:access-admin`.
+- **By class name**, when the name contains `Authorize`, `Authenticate`, `Gate`, `Admin`, `Permission` or `Role`. Package dashboards such as Telescope, Horizon, Pulse and Filament are accepted this way.
+
+The class-name match is case-sensitive, so `role:admin` (lowercase alias) does **not** count, while `EnsureAdminAccess`, `RoleMiddleware` or an alias such as `AdminOnly` does. To add your own names, put them in `routes.auth_middleware`.
+
+### Better than ignoring: protect the endpoint on the server
+
+A route hidden in a React, Vue or Angular router guard is not protected. Anyone can call the URL directly, so the server has to check the user. The finding's remediation says the same thing, and the fixes below remove most admin findings without an ignore entry:
+
+- **Group the admin routes once.** Put them behind `auth`, a `can:` gate or a policy, and an admin role check, so the route file shows the rule:
+  ```php
+  Route::middleware(['auth', 'can:access-admin'])->prefix('admin')->group(function () {
+      Route::get('users', [UserController::class, 'index']);
+  });
+  ```
+- **Name the guard for what it does.** The scanner accepts middleware whose class name contains `Authorize`, `Authenticate`, `Gate`, `Admin`, `Permission` or `Role`, so `EnsureAdminAccess` counts as protection.
+- **Protect the API, not the shell.** The admin shell is only HTML and JavaScript. Once every `admin/api/*` route needs `auth:sanctum` and a gate, ignore the shell with a reason.
+- **Check authorization in the controller too.** Use `$this->authorize()` or a policy, so a route that loses its middleware group still fails closed.
+- **Keep admin off the public host.** Serve it from its own subdomain, restrict it by IP or VPN, or put it behind SSO. Each layer makes a missed middleware less dangerous.
+- **Do not rely on a secret path.** A random prefix like `/x7-ops/` only hides the route from casual visitors; it is not a control. Use it as an extra layer, not the only one.
+- **Review the ignore list.** Each entry is a decision. Keep it short, keep the reasons, and check it when the baseline changes.
+
 ## CI
 
 GitHub Actions with code scanning annotations:
@@ -481,6 +571,15 @@ RiskAnalyzer::extend(NoRawHtmlMail::class);
 ## Limits
 
 Risk Analyzer is a static scanner with intra-procedural taint tracking. It follows input within a function, not across method calls or class properties. The frontend and infrastructure rules match patterns in JavaScript, TypeScript, templates, Dockerfiles, YAML and shell rather than parsing them. So treat a clean scan as "no known patterns found", not as proof of safety. It complements code review, dependency updates and a web application firewall; it doesn't replace them.
+
+### What the scanner does not read
+
+- **Node server code** (Express, NestJS, Fastify, Koa): their routes, middleware and auth checks are not analysed. Only the frontend and infrastructure folders you configure are read, and the frontend rules are pattern matches, not a server model.
+- **Client-side routers and guards** (React Router, Vue Router, Angular routes and `canActivate`): route paths and guards are not analysed. A guard hides a page in the browser; it is not a control on the server.
+- **GraphQL schemas and resolvers** (`.graphql`, `schema.gql`, resolver classes) and **OpenAPI or Swagger specs**: not read, so their operations are not checked for auth.
+- **Authorization inside code**: only route middleware is checked. `$this->authorize()`, `Gate::allows()`, policies and `abort_unless()` checks in controllers are not verified.
+- **Routes outside the route table**: in standalone scans there is no route table, so the route rules are skipped. Routes registered at runtime from a database are only seen in a booted Laravel scan.
+- **Files outside the configured paths** (`paths`, `frontend.paths`, `infrastructure.paths`), dependencies in `vendor/` and `node_modules/`, and minified bundles.
 
 ## Testing
 

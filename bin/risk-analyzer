@@ -9,6 +9,7 @@
 use Composer\InstalledVersions;
 use Illuminate\Container\Container;
 use Siberfx\RiskAnalyzer\Console\BaselineCommand;
+use Siberfx\RiskAnalyzer\Console\IgnoresCommand;
 use Siberfx\RiskAnalyzer\Console\RulesCommand;
 use Siberfx\RiskAnalyzer\Console\ScanCommand;
 use Siberfx\RiskAnalyzer\Standalone;
@@ -50,7 +51,7 @@ $version = class_exists(InstalledVersions::class) && InstalledVersions::isInstal
     : 'dev';
 $application = new Application('Risk Analyzer', $version);
 
-foreach (['scan' => ScanCommand::class, 'baseline' => BaselineCommand::class, 'rules' => RulesCommand::class] as $name => $class) {
+foreach (['scan' => ScanCommand::class, 'baseline' => BaselineCommand::class, 'rules' => RulesCommand::class, 'ignores' => IgnoresCommand::class] as $name => $class) {
     $command = new $class;
     $command->setLaravel($container);
     $command->setName($name);

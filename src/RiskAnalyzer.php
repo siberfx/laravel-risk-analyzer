@@ -104,6 +104,14 @@ final class RiskAnalyzer
         return Arr::get($this->config, $key, $default);
     }
 
+    /**
+     * A read-only scan context for the project (used to list ignores, not to scan).
+     */
+    public function context(?string $basePath = null): ScanContext
+    {
+        return new ScanContext($this->app, $basePath ?? $this->basePath(), $this->config, false, true);
+    }
+
     public function basePath(string $path = ''): string
     {
         $base = rtrim(str_replace('\\', '/', $this->basePath ?? ($this->app instanceof Application ? $this->app->basePath() : (string) getcwd())), '/');
