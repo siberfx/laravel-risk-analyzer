@@ -64,7 +64,7 @@ it('checks only the lockfiles of --frontend folders', function () {
 it('limits --infrastructure to the Docker, CI and script rules and pinned versions', function () {
     $scan = scanScoped($this->project(mixedProject()), ['infrastructure' => [], 'offline' => true]);
 
-    expect($scan['rules'])->toBe(['ci-workflow-risks', 'compose-hardening', 'dockerfile-hardening', 'shell-script-risks', 'unsupported-runtime'])
+    expect($scan['rules'])->toBe(['apt-hardening', 'ci-workflow-risks', 'compose-hardening', 'dockerfile-hardening', 'shell-script-risks', 'unsupported-runtime'])
         ->and($scan['files'])->toBe(['deploy/release.sh', 'docker/Dockerfile'])
         ->and(collect($scan['report']->findings)->where('rule', 'unsupported-runtime')->pluck('message')->all())
         ->each->toContain('(base image)')
@@ -104,7 +104,7 @@ it('takes a bare --frontend and --infrastructure on the command line', function 
 
     Artisan::call('risk-analyzer:scan', ['--infrastructure' => ['deploy'], '--offline' => true, '--no-baseline' => true]);
 
-    expect(Artisan::output())->toContain('5 rules')->toContain('infrastructure: deploy')->toContain('deploy/release.sh');
+    expect(Artisan::output())->toContain('6 rules')->toContain('infrastructure: deploy')->toContain('deploy/release.sh');
 
     $this->artisan('risk-analyzer:scan', ['--infrastructure' => ['missing']])
         ->expectsOutputToContain('Infrastructure folder [missing] does not exist.')

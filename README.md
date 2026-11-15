@@ -201,6 +201,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | `compose-hardening` | `privileged: true` and a mounted Docker socket (high), `network_mode: host`, `cap_add: SYS_ADMIN`/`ALL`, unconfined seccomp/AppArmor, literal secrets in `environment:`, `MYSQL_ALLOW_EMPTY_PASSWORD`, database/cache/search ports published on every interface (medium in `*.prod.yml`, low otherwise) |
 | `shell-script-risks` | In `.sh`/`.bash`/`.zsh`, Makefiles and `Envoy.blade.php`: committed tokens and secrets, `mysql -p<password>`, credentials in URLs, `curl … \| sh`, `chmod 777`, TLS checks turned off (`curl -k`, `--no-check-certificate`, `sslVerify false`), `eval "$VAR"`, `rm -rf "$DIR/"` without `${DIR:?}` |
 | `ci-workflow-risks` | GitHub Actions: issue/PR titles, bodies, branch names or commit messages expanded inside `run:` or `github-script` (script injection, high), `pull_request_target` workflows that check out the PR's code (high), `permissions: write-all`, third-party actions not pinned to a commit SHA (low, one finding per workflow), and the shell checks on `run:` steps |
+| `apt-hardening` | Dockerfiles, scripts and workflows that add APT sources marked `trusted=yes` (high), turn off repository or certificate checks (`AllowInsecureRepositories`, `Verify-Peer false`, high), or use plain `http://` package mirrors (medium) |
 
 ### Configuration & routes (booted application)
 
@@ -235,6 +236,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 | --- | --- |
 | `public-exposure` | `.env`, `.git`, dumps, keys, backups, `phpinfo.php`, logs inside `public/`, and PHP files, dumps, keys, logs and `.htaccess` in folders linked into it (`storage:link`); built source maps (`*.js.map`, low) |
 | `secrets-in-git` | `.env`, OAuth keys, `auth.json`, private keys **committed to git** (asks `git ls-files`). Symfony's committed `.env`/`.env.<env>` only when they hold a real secret |
+| `apt-configuration` | On a Debian or Ubuntu host (the machine running the scan), `/etc/apt`: plain `http://` sources together with a non-zero `Acquire::Retries` (the setup described for CVE-2026-109518, medium; Debian 12 and Ubuntu 22.04 retry by default), and sources marked `trusted=yes` or with checks turned off (high). Skipped on other systems |
 | `file-permissions` | `.env`, `auth.json` and the Passport key readable or writable by every user, `storage/` and `bootstrap/cache` set to 777 (not on Windows) |
 
 ## Frontend code

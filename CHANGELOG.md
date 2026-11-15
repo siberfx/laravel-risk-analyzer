@@ -2,6 +2,15 @@
 
 All notable changes to this package are documented here.
 
+## [2.8.0] - 2026-11-16
+
+### Added
+- `apt-hardening` (infrastructure): Dockerfiles, shell scripts and GitHub Actions workflows that add APT sources marked `trusted=yes` (high), turn off repository or certificate checks with `Acquire::AllowInsecureRepositories` or `Acquire::…::Verify-Peer` (high), or use plain `http://` package mirrors (medium). Included in `--infrastructure`.
+- `apt-configuration` (filesystem): on a Debian or Ubuntu host, reads `/etc/apt` and reports plain `http://` sources together with a non-zero `Acquire::Retries` (medium), the setup described for CVE-2026-109518, where an attacker on the network path to a mirror can manipulate APT's HTTP traffic. Debian 12 and Ubuntu 22.04 retry failed downloads by default, so the check uses that default unless `Acquire::Retries` is set. Sources marked `trusted=yes` and turned-off checks are high. The rule is skipped on other systems and runs in standalone scans too.
+
+### Notes
+- The CVE details come from a third-party summary. Its CVSS score was pending, and it was not in the Debian or Ubuntu trackers when checked, so the rule is a hardening check, not a confirmed match. Default Debian 12 and Ubuntu 24.04 source files often use `http://` mirrors, so expect the medium finding on such hosts until the sources are switched to `https://`.
+
 ## [2.7.2] - 2026-10-25
 
 ### Added
