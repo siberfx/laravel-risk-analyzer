@@ -45,6 +45,57 @@ final class Lockfiles
     }
 
     /**
+     * Packages actually installed in vendor/ (or composer.json's config.vendor-dir), from
+     * vendor/composer/installed.json: {"packages": [...], "dev-package-names": [...]} on
+     * Composer 2, a plain list on Composer 1. Catches a vendor/ folder that has drifted from
+     * composer.lock, or a deployment without one.
+     *
+     * @return list<array{ecosystem: string, name: string, version: string, dev: bool, abandoned: bool|string, source: string}>
+     */
+    public static function installedComposer(ScanContext $context): array
+    {
+        $vendor = trim(str_replace('\\', '/', (string) ($context->readJson('composer.json')['config']['vendor-dir'] ?? 'vendor')), '/');
+        $source = ($vendor === '' ? 'vendor' : $vendor).'/composer/installed.json';
+        $installed = $context->readJson($source);
+
+        if ($installed === null) {
+            return [];
+        }
+
+        $list = array_is_list($installed) ? $installed : (array) ($installed['packages'] ?? []);
+        $devNames = array_is_list($installed) ? [] : (array) ($installed['dev-package-names'] ?? []);
+        $packages = [];
+
+        foreach ($list as $package) {
+            if (! is_array($package) || ! isset($package['name'], $package['version'])) {
+                continue;
+            }
+
+            $packages[] = [
+                'ecosystem' => 'Packagist',
+                'name' => (string) $package['name'],
+                'version' => ltrim((string) $package['version'], 'v'),
+                'dev' => in_array($package['name'], $devNames, true),
+                'abandoned' => $package['abandoned'] ?? false,
+                'source' => $source,
+            ];
+        }
+
+        return $packages;
+    }
+
+    /**
+     * Packages actually installed in node_modules/, from the hidden lockfile npm 7+
+     * writes to node_modules/.package-lock.json (same format as package-lock.json v2/v3).
+     *
+     * @return list<array{ecosystem: string, name: string, version: string, dev: bool, abandoned: bool|string, source: string}>
+     */
+    public static function installedNpm(ScanContext $context): array
+    {
+        return self::npm($context, 'node_modules/.package-lock.json');
+    }
+
+    /**
      * Every JavaScript lockfile in the project, one entry per package version.
      *
      * @return list<array{ecosystem: string, name: string, version: string, dev: bool, abandoned: bool|string, source: string}>
@@ -200,9 +251,9 @@ final class Lockfiles
      *
      * @return list<array{ecosystem: string, name: string, version: string, dev: bool, abandoned: bool|string, source: string}>
      */
-    public static function npm(ScanContext $context): array
+    public static function npm(ScanContext $context, string $source = 'package-lock.json'): array
     {
-        $lock = $context->readJson('package-lock.json');
+        $lock = $context->readJson($source);
 
         if ($lock === null) {
             return [];
@@ -217,16 +268,16 @@ final class Lockfiles
                 }
 
                 $name = $package['name'] ?? substr((string) $path, (int) strrpos((string) $path, 'node_modules/') + 13);
-                $packages[$name.'@'.$package['version']] = self::npmEntry($name, $package);
+                $packages[$name.'@'.$package['version']] = self::npmEntry($name, $package, $source);
             }
 
             return array_values($packages);
         }
 
-        $walk = function (array $dependencies) use (&$walk, &$packages): void {
+        $walk = function (array $dependencies) use (&$walk, &$packages, $source): void {
             foreach ($dependencies as $name => $package) {
                 if (isset($package['version'])) {
-                    $packages[$name.'@'.$package['version']] = self::npmEntry((string) $name, $package);
+                    $packages[$name.'@'.$package['version']] = self::npmEntry((string) $name, $package, $source);
                 }
 
                 $walk((array) ($package['dependencies'] ?? []));

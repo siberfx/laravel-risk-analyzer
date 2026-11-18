@@ -2,6 +2,14 @@
 
 All notable changes to this package are documented here.
 
+## [2.9.0] - 2026-11-18
+
+### Added
+- `vulnerable-dependency` also checks the packages actually installed, not only the lockfiles: `vendor/composer/installed.json` (Composer 2 and 1 formats, following `config.vendor-dir` from composer.json) and npm's `node_modules/.package-lock.json`, in the project root and in frontend folders. This catches a `vendor/` or `node_modules/` folder that differs from the lockfile, and servers deployed without one.
+  - A version that is both locked and installed is reported once, against the lockfile.
+  - A version found only in the installed packages is reported against `vendor/composer/installed.json` or `node_modules/.package-lock.json`. When the lockfile pins another version, the remediation says so and suggests `composer install` or `npm ci`. Findings have an `installed` flag in `meta`.
+- `dependencies.installed` config option (default `true`) to turn this off.
+
 ## [2.8.1] - 2026-11-16
 
 ### Added

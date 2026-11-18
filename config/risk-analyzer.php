@@ -157,7 +157,10 @@ return [
     | bun.lock) are checked against the OSV.dev database (GitHub Security
     | Advisories, FriendsOfPHP, npm...). Results are cached per package
     | version. Use --offline to skip network lookups. 'npm' covers every
-    | JavaScript lockfile.
+    | JavaScript lockfile. 'installed' also checks what is actually installed
+    | (vendor/composer/installed.json, node_modules/.package-lock.json), which
+    | catches a vendor/ folder that differs from composer.lock or a server
+    | deployed without a lockfile.
     |
     */
 
@@ -167,6 +170,7 @@ return [
         'cache_ttl' => 60 * 60 * 6,
         'include_dev' => true,
         'npm' => true,
+        'installed' => true,
         'ignore' => [
             // 'GHSA-xxxx-xxxx-xxxx',
         ],

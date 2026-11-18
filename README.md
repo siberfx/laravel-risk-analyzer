@@ -19,7 +19,7 @@ DB::select('select * from users where id = ?', [$id]); // bindings              
 
 It also runs **without Laravel**, on Symfony, Yii2 and plain PHP projects or a frontend or deploy repository, with `vendor/bin/risk-analyzer`. See [Without Laravel](#without-laravel-symfony-yii2-plain-php).
 
-Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun). Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
+Runtime rules check the **booted application** instead of reading `.env` files. They look at the merged config and the **real route table** with middleware groups expanded. Dependency advisories come from the **OSV.dev** database, read straight from your lock files (Composer, npm, Yarn, pnpm and Bun) and from what is actually installed in `vendor/` and `node_modules/`. Support dates for PHP, Laravel and Node.js come from **endoflife.date** and **php.net**.
 
 - 48 rules across code, frontend code, Docker/CI/scripts, configuration and routes, dependencies and filesystem
 - Taint tracking through variables, string building, helpers, closures and loops, with sanitizers (`(int)`, `escapeshellarg`, `basename`, `in_array` allow-lists, `validated()`...)
@@ -225,7 +225,7 @@ Exit codes: `0` when nothing reaches the threshold, `1` when something does, `2`
 
 | Rule | Looks for |
 | --- | --- |
-| `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version. Lockfiles inside frontend folders (a separate SPA) are checked too |
+| `vulnerable-dependency` | Packages in `composer.lock`, `package-lock.json`, `yarn.lock` (v1 and Berry), `pnpm-lock.yaml` and `bun.lock` with OSV advisories, with the lowest fixing version. Lockfiles inside frontend folders (a separate SPA) are checked too, and so are the packages installed in `vendor/` (`vendor/composer/installed.json`, following `config.vendor-dir`) and `node_modules/` (`node_modules/.package-lock.json`) when they differ from the lockfile or there is none; turn that off with `dependencies.installed` |
 | `abandoned-package` | Packages marked abandoned (from the lock file, offline) |
 | `composer-hardening` | `secure-http: false`, HTTP repositories, `allow-plugins: true`, unlisted plugins, missing lock |
 | `unsupported-runtime` | PHP, Laravel and Node.js versions past (or within 90 days of) end of security support; a PHP patch level missing security releases; a `composer.json` PHP constraint that allows an unsupported version; Node versions pinned in `.nvmrc`, `.node-version`, `package.json`, Dockerfiles, compose files and GitHub Actions; in production, the MySQL/MariaDB/PostgreSQL and Redis/Valkey servers the app uses; PHP base images (`php:8.1-fpm`, `serversideup/php:8.2-…`) in Dockerfiles and compose files |
@@ -579,7 +579,7 @@ Risk Analyzer is a static scanner with intra-procedural taint tracking. It follo
 - **GraphQL schemas and resolvers** (`.graphql`, `schema.gql`, resolver classes) and **OpenAPI or Swagger specs**: not read, so their operations are not checked for auth.
 - **Authorization inside code**: only route middleware is checked. `$this->authorize()`, `Gate::allows()`, policies and `abort_unless()` checks in controllers are not verified.
 - **Routes outside the route table**: in standalone scans there is no route table, so the route rules are skipped. Routes registered at runtime from a database are only seen in a booted Laravel scan.
-- **Files outside the configured paths** (`paths`, `frontend.paths`, `infrastructure.paths`), dependencies in `vendor/` and `node_modules/`, and minified bundles.
+- **Files outside the configured paths** (`paths`, `frontend.paths`, `infrastructure.paths`), the code of dependencies in `vendor/` and `node_modules/` (their installed versions are checked by `vulnerable-dependency`), and minified bundles.
 
 ## Testing
 

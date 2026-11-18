@@ -26,7 +26,7 @@ final class VulnerableDependencies extends AbstractProjectRule
 
     public function description(): string
     {
-        return 'Packages in composer.lock, package-lock.json, yarn.lock, pnpm-lock.yaml and bun.lock (also inside frontend folders such as a separate SPA) with published advisories, looked up in the OSV.dev database (GitHub Security Advisories, FriendsOfPHP, npm). Severity comes from the advisory; the lowest fixing version is suggested.';
+        return 'Packages in composer.lock, package-lock.json, yarn.lock, pnpm-lock.yaml and bun.lock (also inside frontend folders such as a separate SPA), and the packages actually installed in vendor/ (vendor/composer/installed.json) and node_modules/ (node_modules/.package-lock.json), with published advisories, looked up in the OSV.dev database (GitHub Security Advisories, FriendsOfPHP, npm). Severity comes from the advisory; the lowest fixing version is suggested.';
     }
 
     public function category(): Category
@@ -56,10 +56,14 @@ final class VulnerableDependencies extends AbstractProjectRule
 
             return $path === '' || (! ScanContext::isAbsolute($folder) && ! in_array($folder, $folders, true) && is_dir($context->basePath($folder)));
         });
+        $installed = (bool) $context->config('dependencies.installed', true);
         $packages = [
             ...($frontendOnly ? [] : Lockfiles::composer($context)),
-            ...($javascript && $root ? Lockfiles::javascript($context) : []),
+            ...($frontendOnly || ! $installed ? [] : Lockfiles::installedComposer($context)),
+            ...($javascript && $root ? $this->javascript($context, $installed) : []),
         ];
+        // name@version pairs some lockfile pins, to tell drift in vendor/ or node_modules/ apart.
+        $locked = [];
 
         $queries = [];
 
@@ -73,10 +77,15 @@ final class VulnerableDependencies extends AbstractProjectRule
                     $prefix.'bun.lockb', anchor: $prefix.'bun.lockb');
             }
 
-            foreach ($folder === '' ? $packages : Lockfiles::javascript($scope) as $package) {
+            foreach ($folder === '' ? $packages : $this->javascript($scope, $installed) as $package) {
+                if (! self::isInstalledManifest($package['source'])) {
+                    $locked[$prefix.$package['ecosystem'].':'.$package['name']][] = $package['version'];
+                }
+
                 if (($includeDev || ! $package['dev']) && ! str_starts_with($package['version'], 'dev-')) {
                     $package['source'] = $prefix.$package['source'];
-                    $queries[$prefix.$package['ecosystem'].':'.$package['name'].'@'.$package['version']] = $package;
+                    // A version both locked and installed is reported against the lockfile.
+                    $queries[$prefix.$package['ecosystem'].':'.$package['name'].'@'.$package['version']] ??= $package;
                 }
             }
         }
@@ -106,21 +115,39 @@ final class VulnerableDependencies extends AbstractProjectRule
 
                 $fix = $advisory['fixed'] !== null ? "Upgrade to {$advisory['fixed']} or later." : 'No fixed version is published yet; check the advisory for workarounds.';
                 $command = match (basename($package['source'])) {
-                    'composer.lock' => "composer update {$package['name']} --with-dependencies",
+                    'composer.lock', 'installed.json' => "composer update {$package['name']} --with-dependencies",
                     'yarn.lock' => "yarn up {$package['name']}@^{$advisory['fixed']}, or yarn upgrade on Yarn 1",
                     'pnpm-lock.yaml' => "pnpm update {$package['name']}@^{$advisory['fixed']}",
                     'bun.lock' => "bun update {$package['name']}@^{$advisory['fixed']}",
                     default => "npm install {$package['name']}@^{$advisory['fixed']}",
                 };
-                $folder = dirname($package['source']);
-                $command = $folder === '.' ? $command : "cd {$folder} && {$command}";
+                $drift = '';
+
+                if (self::isInstalledManifest($package['source'])) {
+                    // installed.json is only read at the project root (vendor-dir may be nested);
+                    // node_modules/.package-lock.json also inside frontend folders.
+                    $composer = $package['ecosystem'] === 'Packagist';
+                    $folder = $composer ? '' : (string) preg_replace('#/?node_modules/\.package-lock\.json$#', '', $package['source']);
+                    $prefix = $folder === '' ? '' : $folder.'/';
+
+                    if (isset($locked[$prefix.$package['ecosystem'].':'.$package['name']])) {
+                        $lockfile = $composer ? 'composer.lock' : 'the lockfile';
+                        $sync = $composer ? 'composer install' : 'npm ci';
+                        $drift = "This version is installed but {$lockfile} pins ".implode(', ', array_unique($locked[$prefix.$package['ecosystem'].':'.$package['name']]))."; run `{$sync}` to install the locked version. ";
+                    }
+                } else {
+                    $folder = dirname($package['source']);
+                    $folder = $folder === '.' ? '' : $folder;
+                }
+
+                $command = $folder === '' ? $command : "cd {$folder} && {$command}";
                 $cves = array_filter($advisory['aliases'], fn (string $alias) => str_starts_with($alias, 'CVE-') && $alias !== $advisory['id']);
                 $ids = implode(' / ', [$advisory['id'], ...$cves]);
 
                 yield $this->finding(
                     "{$package['name']} {$package['version']}: {$advisory['summary']} ({$ids})",
                     $advisory['severity'],
-                    $fix.($advisory['fixed'] !== null ? " ({$command})" : '').' '.$advisory['url'],
+                    $drift.$fix.($advisory['fixed'] !== null ? " ({$command})" : '').' '.$advisory['url'],
                     $package['source'],
                     anchor: $package['name'].'|'.$advisory['id'],
                     meta: [
@@ -128,6 +155,7 @@ final class VulnerableDependencies extends AbstractProjectRule
                         'version' => $package['version'],
                         'ecosystem' => $package['ecosystem'],
                         'dev' => $package['dev'],
+                        'installed' => self::isInstalledManifest($package['source']),
                         'advisory' => $advisory['id'],
                         'aliases' => $advisory['aliases'],
                         'fixed' => $advisory['fixed'],
@@ -136,6 +164,21 @@ final class VulnerableDependencies extends AbstractProjectRule
                 );
             }
         }
+    }
+
+    /**
+     * JavaScript lockfile packages, then the ones installed in node_modules/ that no lockfile lists.
+     *
+     * @return list<array{ecosystem: string, name: string, version: string, dev: bool, abandoned: bool|string, source: string}>
+     */
+    private function javascript(ScanContext $context, bool $installed): array
+    {
+        return [...Lockfiles::javascript($context), ...($installed ? Lockfiles::installedNpm($context) : [])];
+    }
+
+    private static function isInstalledManifest(string $source): bool
+    {
+        return str_ends_with($source, 'node_modules/.package-lock.json') || str_ends_with($source, '/composer/installed.json');
     }
 
     /**

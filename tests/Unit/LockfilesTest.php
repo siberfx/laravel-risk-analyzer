@@ -133,3 +133,28 @@ it('explains that a binary bun.lockb cannot be checked', function () {
         ->and($findings[0]->severity->value)->toBe('info')
         ->and($findings[0]->message)->toBe('bun.lockb is a binary lockfile and cannot be checked for advisories.');
 });
+
+it('reads vendor/composer/installed.json from Composer 2 and 1, following config.vendor-dir', function () {
+    expect(lockedPackages(['vendor/composer/installed.json' => json_encode([
+        'packages' => [['name' => 'monolog/monolog', 'version' => 'v3.8.0'], ['name' => 'pestphp/pest', 'version' => '4.1.0'], ['name' => 'broken']],
+        'dev-package-names' => ['pestphp/pest'],
+    ])], 'installedComposer'))->toBe([
+        'monolog/monolog@3.8.0 vendor/composer/installed.json',
+        'pestphp/pest@4.1.0 dev vendor/composer/installed.json',
+    ])->and(lockedPackages([
+        'composer.json' => json_encode(['config' => ['vendor-dir' => 'deps/']]),
+        'deps/composer/installed.json' => json_encode([['name' => 'monolog/monolog', 'version' => '1.0.0']]),
+    ], 'installedComposer'))->toBe(['monolog/monolog@1.0.0 deps/composer/installed.json'])
+        ->and(lockedPackages(['composer.lock' => '{}'], 'installedComposer'))->toBe([]);
+});
+
+it('reads node_modules/.package-lock.json', function () {
+    expect(lockedPackages(['node_modules/.package-lock.json' => json_encode(['lockfileVersion' => 3, 'packages' => [
+        'node_modules/axios' => ['version' => '1.6.0'],
+        'node_modules/@vitejs/plugin-vue' => ['version' => '5.0.0', 'dev' => true],
+        'node_modules/app-link' => ['version' => '1.0.0', 'link' => true],
+    ]])], 'installedNpm'))->toBe([
+        'axios@1.6.0 node_modules/.package-lock.json',
+        '@vitejs/plugin-vue@5.0.0 dev node_modules/.package-lock.json',
+    ]);
+});

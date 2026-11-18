@@ -107,6 +107,106 @@ it('reports an unreachable advisory database as info instead of failing', functi
         ->and($findings[0]->severity->value)->toBe('info');
 });
 
+/**
+ * OSV fake that answers querybatch by package, not by position.
+ *
+ * @param  array<string, string>  $vulnerable  "ecosystem:name@version" => advisory id
+ */
+function fakeOsvFor(array $vulnerable): void
+{
+    Http::fake(function (Request $request) use ($vulnerable) {
+        if (str_ends_with($request->url(), '/v1/querybatch')) {
+            return Http::response(['results' => array_map(function (array $query) use ($vulnerable) {
+                $id = $vulnerable[$query['package']['ecosystem'].':'.$query['package']['name'].'@'.$query['version']] ?? null;
+
+                return $id === null ? [] : ['vulns' => [['id' => $id]]];
+            }, $request['queries'])]);
+        }
+
+        $id = basename($request->url());
+        $key = (string) array_search($id, $vulnerable, true);
+        [$ecosystem, $name] = explode(':', substr($key, 0, (int) strrpos($key, '@')), 2);
+
+        return Http::response([
+            'id' => $id,
+            'summary' => "Advisory for {$name}",
+            'database_specific' => ['severity' => 'HIGH'],
+            'affected' => [['package' => ['ecosystem' => $ecosystem, 'name' => $name], 'ranges' => [['events' => [['introduced' => '0'], ['fixed' => '9.0.0']]]]]],
+        ]);
+    });
+}
+
+it('checks the packages installed in vendor and node_modules that differ from the lockfiles', function () {
+    fakeOsvFor(['Packagist:guzzlehttp/psr7@2.4.1' => 'GHSA-psr7-0000-0001', 'npm:axios@1.6.0' => 'GHSA-axio-0000-0001']);
+
+    $root = $this->project([
+        'composer.lock' => json_encode(['packages' => [['name' => 'guzzlehttp/psr7', 'version' => '2.4.5']]]),
+        'vendor/composer/installed.json' => json_encode([
+            'packages' => [
+                ['name' => 'guzzlehttp/psr7', 'version' => '2.4.1', 'version_normalized' => '2.4.1.0'],
+                ['name' => 'pestphp/pest', 'version' => 'v4.1.0'],
+            ],
+            'dev' => true,
+            'dev-package-names' => ['pestphp/pest'],
+        ]),
+        'package-lock.json' => json_encode(['lockfileVersion' => 3, 'packages' => ['' => ['name' => 'app'], 'node_modules/axios' => ['version' => '1.7.4']]]),
+        'node_modules/.package-lock.json' => json_encode(['lockfileVersion' => 3, 'packages' => ['node_modules/axios' => ['version' => '1.6.0']]]),
+    ]);
+
+    $findings = app(RiskAnalyzer::class)->scan(only: ['vulnerable-dependency'], baseline: false, basePath: $root)->findings;
+    $files = array_map(fn (Finding $finding) => $finding->file, $findings);
+    sort($files);
+
+    expect($files)->toBe(['node_modules/.package-lock.json', 'vendor/composer/installed.json']);
+
+    $composer = collect($findings)->firstWhere('file', 'vendor/composer/installed.json');
+    $npm = collect($findings)->firstWhere('file', 'node_modules/.package-lock.json');
+
+    expect($composer->meta['installed'])->toBeTrue()
+        ->and($composer->remediation)->toContain('composer.lock pins 2.4.5; run `composer install`')
+        ->and($composer->remediation)->toContain('composer update guzzlehttp/psr7 --with-dependencies')
+        ->and($npm->remediation)->toContain('run `npm ci`');
+
+    // Locked and installed versions are each queried once; pest counts because include_dev defaults to true.
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/v1/querybatch') && count($request['queries']) === 5);
+});
+
+it('reports a version that is both locked and installed once, against the lockfile', function () {
+    fakeOsvFor(['Packagist:guzzlehttp/psr7@2.4.1' => 'GHSA-psr7-0000-0001']);
+
+    $root = $this->project([
+        'composer.lock' => json_encode(['packages' => [['name' => 'guzzlehttp/psr7', 'version' => '2.4.1']]]),
+        'vendor/composer/installed.json' => json_encode(['packages' => [['name' => 'guzzlehttp/psr7', 'version' => '2.4.1']]]),
+    ]);
+
+    $findings = app(RiskAnalyzer::class)->scan(only: ['vulnerable-dependency'], baseline: false, basePath: $root)->findings;
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->file)->toBe('composer.lock')
+        ->and($findings[0]->meta['installed'])->toBeFalse();
+});
+
+it('checks vendor without a lockfile, and skips installed packages when turned off', function () {
+    fakeOsvFor(['Packagist:guzzlehttp/psr7@2.4.1' => 'GHSA-psr7-0000-0001']);
+
+    $root = $this->project([
+        'composer.json' => json_encode(['config' => ['vendor-dir' => 'lib/vendor']]),
+        'lib/vendor/composer/installed.json' => json_encode([['name' => 'guzzlehttp/psr7', 'version' => 'v2.4.1']]), // Composer 1 format
+    ]);
+
+    $findings = app(RiskAnalyzer::class)->scan(only: ['vulnerable-dependency'], baseline: false, basePath: $root)->findings;
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->file)->toBe('lib/vendor/composer/installed.json')
+        ->and($findings[0]->remediation)->not->toContain('composer install')
+        ->and($findings[0]->remediation)->not->toContain('cd ');
+
+    config()->set('risk-analyzer.dependencies.installed', false);
+    app()->forgetInstance(RiskAnalyzer::class);
+
+    expect(app(RiskAnalyzer::class)->scan(only: ['vulnerable-dependency'], baseline: false, basePath: $root)->findings)->toBeEmpty();
+});
+
 it('reports abandoned packages from the lock file', function () {
     $findings = app(RiskAnalyzer::class)->scan(only: ['abandoned-package'], baseline: false, basePath: lockProject($this))->findings;
 
