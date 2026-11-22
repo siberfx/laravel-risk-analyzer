@@ -42,6 +42,8 @@ Runtime rules check the **booted application** instead of reading `.env` files. 
 | PHP     | 8.4, 8.5, 8.6 |
 | Laravel | 12.x, 13.x    |
 
+PHP 8.6 is tested with Laravel 13. Laravel 12 allows PHP 8.6 too, but its test tooling (Testbench 10) can't be installed on PHP 8.6 yet, so that combination is not covered by CI.
+
 These are the requirements for running the scanner. Without Laravel it can scan projects on any framework and any PHP version; see [Without Laravel](#without-laravel-symfony-yii2-plain-php).
 
 ## Installation

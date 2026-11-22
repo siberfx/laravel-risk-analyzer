@@ -15,6 +15,12 @@ jobs:
         php: ['8.4', '8.5', '8.6']
         laravel: ['12.*', '13.*']
         stability: [prefer-lowest, prefer-stable]
+        exclude:
+          # PHP 8.6 needs paratest 7.29+ (PHPUnit 13.4.7+), but Laravel 12's
+          # orchestra/testbench 10.x conflicts with PHPUnit 13.1+. Laravel 12
+          # itself allows PHP 8.6; only its test stack can't install there.
+          - php: '8.6'
+            laravel: '12.*'
 
     name: PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }} - ${{ matrix.stability }}
 

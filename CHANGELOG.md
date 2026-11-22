@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here.
 
+## [2.10.1] - 2026-11-22
+
+### Fixed
+- CI on PHP 8.6: the dev dependencies allow Pest 5 (`pestphp/pest` `^4.0|^5.0`), because Pest 4 needs a paratest that caps PHP at 8.5. The unused `pestphp/pest-plugin-laravel` is removed.
+- PHP 8.6 is tested with Laravel 13 only. Laravel 12 allows PHP 8.6, but its Testbench 10 conflicts with the PHPUnit 13.4 that PHP 8.6 needs, so that pair is left out of the CI matrix (noted in the README). Installing the package is not affected.
+
 ## [2.10.0] - 2026-11-22
 
 ### Added
