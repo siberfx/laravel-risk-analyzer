@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## [2.10.0] - 2026-11-22
+
+### Added
+- PHP 8.6 support: composer.json allows `~8.6.0`, CI tests on 8.6, and `unsupported-runtime` knows the 8.6 security-support date (2030-12-31) offline.
+
 ## [2.9.0] - 2026-11-18
 
 ### Added

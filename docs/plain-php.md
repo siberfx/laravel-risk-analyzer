@@ -4,7 +4,7 @@ Risk Analyzer scans PHP projects that don't use a framework (or use one it has n
 
 ## Install
 
-The scanner needs PHP 8.4 or 8.5. Install it once, outside the project:
+The scanner needs PHP 8.4, 8.5 or 8.6. Install it once, outside the project:
 
 ```bash
 composer global require siberfx/laravel-risk-analyzer

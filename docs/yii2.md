@@ -4,7 +4,7 @@ Risk Analyzer scans a Yii2 project (basic or advanced template) without Laravel:
 
 ## Install
 
-The scanner needs PHP 8.4 or 8.5 and Symfony Console 7.2+, so it usually can't be installed next to a Yii2 app's own dependencies. Install it once, outside the project:
+The scanner needs PHP 8.4, 8.5 or 8.6 and Symfony Console 7.2+, so it usually can't be installed next to a Yii2 app's own dependencies. Install it once, outside the project:
 
 ```bash
 composer global require siberfx/laravel-risk-analyzer

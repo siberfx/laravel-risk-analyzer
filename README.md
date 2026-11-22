@@ -37,10 +37,10 @@ Runtime rules check the **booted application** instead of reading `.env` files. 
 
 ## Requirements
 
-| Package | Version    |
-| ------- | ---------- |
-| PHP     | 8.4, 8.5   |
-| Laravel | 12.x, 13.x |
+| Package | Version       |
+| ------- | ------------- |
+| PHP     | 8.4, 8.5, 8.6 |
+| Laravel | 12.x, 13.x    |
 
 These are the requirements for running the scanner. Without Laravel it can scan projects on any framework and any PHP version; see [Without Laravel](#without-laravel-symfony-yii2-plain-php).
 

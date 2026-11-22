@@ -4,7 +4,7 @@ Risk Analyzer scans a Symfony project without Laravel: your PHP code, Twig templ
 
 ## Install
 
-The scanner needs PHP 8.4 or 8.5. It depends on Illuminate (Laravel) components, which require Symfony Console 7.2+ or 8.
+The scanner needs PHP 8.4, 8.5 or 8.6. It depends on Illuminate (Laravel) components, which require Symfony Console 7.2+ or 8.
 
 **Symfony 7.4 and 8 apps** can usually add it as a dev dependency:
 

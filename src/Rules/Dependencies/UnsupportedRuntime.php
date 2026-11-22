@@ -26,6 +26,7 @@ final class UnsupportedRuntime extends AbstractProjectRule
     public const array PHP = [
         '8.0' => '2023-11-26', '8.1' => '2025-12-31', '8.2' => '2026-12-31',
         '8.3' => '2027-12-31', '8.4' => '2028-12-31', '8.5' => '2029-12-31',
+        '8.6' => '2030-12-31',
     ];
 
     public const array LARAVEL = [
